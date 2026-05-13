@@ -1,0 +1,30 @@
+# Node / Bun
+node_modules/
+.bun/
+bun-*.tar.gz
+
+# Kettu build output
+Kettu/dist/
+
+# KettuTweak build output
+KettuTweak/.theos/
+KettuTweak/packages/
+KettuTweak/*.deb
+
+# Workflow local artifacts
+*.ipa
+discord.ipa
+Payload/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.log
+.idea/
+*.swp
+*.swo
+
+# Local secrets - never commit these
+.env
+.env.local
+secrets.json

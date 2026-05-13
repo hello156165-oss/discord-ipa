@@ -1,0 +1,131 @@
+name: Build Kettu IPA
+
+# Build le tweak KettuTweak avec Theos sur un runner macOS, l'injecte
+# dans un IPA Discord déchiffré fourni en input, et publie l'IPA en artifact.
+# L'IPA produit est non-signé : tu le signes avec Sideloadly (ton Apple ID).
+
+on:
+  workflow_dispatch:
+    inputs:
+      ipa_url:
+        description: "URL directe d'un IPA Discord DÉCHIFFRÉ (decrypted)"
+        required: true
+        type: string
+      release:
+        description: "Créer une GitHub Release avec l'IPA ?"
+        required: false
+        type: boolean
+        default: false
+
+env:
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  build-tweak:
+    name: Build KettuTweak (.deb)
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: ./KettuTweak
+
+    steps:
+      - name: Checkout monorepo
+        uses: actions/checkout@v4
+
+      - name: Cache Theos
+        id: cache-theos
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/theos
+          key: ${{ runner.os }}-theos-${{ hashFiles('KettuTweak/Makefile') }}
+
+      - name: Setup Theos
+        if: steps.cache-theos.outputs.cache-hit != 'true'
+        uses: Randomblock1/theos-action@v1
+
+      - name: Set GNU Make path
+        run: echo "PATH=$(brew --prefix make)/libexec/gnubin:$PATH" >> $GITHUB_ENV
+
+      - name: Build .deb package
+        run: make package
+        env:
+          THEOS: ${{ github.workspace }}/theos
+
+      - name: Upload .deb
+        uses: actions/upload-artifact@v4
+        with:
+          name: kettu-tweak-deb
+          path: KettuTweak/packages/*-arm64.deb
+
+  build-ipa:
+    name: Inject tweak into Discord IPA
+    runs-on: macos-15
+    needs: build-tweak
+
+    steps:
+      - name: Checkout monorepo
+        uses: actions/checkout@v4
+
+      - name: Download tweak artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: kettu-tweak-deb
+          path: ./artifacts
+
+      - name: Download Discord IPA
+        run: |
+          echo "Downloading Discord IPA from input URL..."
+          curl -fL --retry 3 --retry-delay 5 -o discord.ipa "${{ inputs.ipa_url }}"
+          ls -lh discord.ipa
+          file discord.ipa
+
+      - name: Extract metadata from KettuTweak/control
+        id: meta
+        working-directory: ./KettuTweak
+        run: |
+          NAME=$(grep '^Name:' control | cut -d ' ' -f 2)
+          PACKAGE=$(grep '^Package:' control | cut -d ' ' -f 2)
+          VERSION=$(grep '^Version:' control | cut -d ' ' -f 2)
+          DEB_FILE_NAME="${PACKAGE}_${VERSION}_iphoneos-arm64.deb"
+          echo "app_name=$NAME" >> $GITHUB_OUTPUT
+          echo "deb_file=$DEB_FILE_NAME" >> $GITHUB_OUTPUT
+
+      - name: Install cyan (pyzule-rw)
+        run: pip install --force-reinstall https://github.com/asdfzxcvbn/pyzule-rw/archive/main.zip Pillow
+
+      - name: Inject tweak into Discord IPA
+        run: |
+          DEB_PATH=$(find ./artifacts -name "*.deb" | head -n 1)
+          echo "Using DEB: $DEB_PATH"
+          cyan -uwsgq \
+            -i discord.ipa \
+            -o "${{ steps.meta.outputs.app_name }}.ipa" \
+            -f "$DEB_PATH"
+          ls -lh "${{ steps.meta.outputs.app_name }}.ipa"
+
+      - name: Get Discord version from IPA
+        id: discord_ver
+        run: |
+          unzip -q "${{ steps.meta.outputs.app_name }}.ipa" -d _ipa_inspect
+          DISCORD_VERSION=$(plutil -p _ipa_inspect/Payload/Discord.app/Info.plist | grep CFBundleShortVersionString | cut -d '"' -f 4)
+          echo "discord_version=$DISCORD_VERSION" >> $GITHUB_OUTPUT
+          rm -rf _ipa_inspect
+
+      - name: Upload final IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.meta.outputs.app_name }}-discord-${{ steps.discord_ver.outputs.discord_version }}-ipa
+          path: ${{ steps.meta.outputs.app_name }}.ipa
+          if-no-files-found: error
+
+      - name: Create GitHub Release
+        if: inputs.release == true
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.discord_ver.outputs.discord_version }}
+          name: Kettu ${{ steps.discord_ver.outputs.discord_version }}
+          files: ${{ steps.meta.outputs.app_name }}.ipa
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

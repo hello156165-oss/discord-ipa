@@ -1,0 +1,17 @@
+.DS_Store
+/.build
+/Packages
+/*.xcodeproj
+xcuserdata/
+
+.theos
+/packages
+.theos/
+packages/
+.DS_Store
+
+venv/
+patcher
+ipa-icons.zip
+*.ipa
+OpenInDiscord/

@@ -1,0 +1,73 @@
+name: Build Kettu JS Bundle
+
+# Build le bundle JavaScript depuis Kettu/ et le publie sur la branche `dist`.
+# URL d'utilisation pour "Custom Load URL" dans Kettu :
+#   https://raw.githubusercontent.com/<TON_USER>/<TON_REPO>/dist/kettu.js
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+    paths:
+      - 'Kettu/src/**'
+      - 'Kettu/package.json'
+      - 'Kettu/bun.lock'
+      - 'Kettu/scripts/**'
+      - '.github/workflows/build-bundle.yml'
+
+jobs:
+  build:
+    name: Build kettu.js
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Kettu dependencies
+        working-directory: ./Kettu
+        run: bun install --frozen-lockfile
+
+      - name: Build bundle
+        working-directory: ./Kettu
+        run: bun run build
+
+      - name: Verify bundle output
+        run: |
+          ls -lh Kettu/dist/
+          file Kettu/dist/kettu.js
+          echo "Bundle size: $(du -h Kettu/dist/kettu.js | cut -f1)"
+
+      - name: Upload bundle as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kettu-js-bundle
+          path: Kettu/dist/kettu.js
+          if-no-files-found: error
+
+      - name: Publish bundle to `dist` branch
+        run: |
+          # Prépare un dossier temporaire avec uniquement le bundle
+          mkdir -p /tmp/dist-publish
+          cp Kettu/dist/kettu.js /tmp/dist-publish/
+          # Copie aussi en kettu.min.js (l'URL par défaut du tweak utilise ce nom)
+          cp Kettu/dist/kettu.js /tmp/dist-publish/kettu.min.js
+          echo "Built on $(date -u) from commit ${GITHUB_SHA}" > /tmp/dist-publish/BUILD_INFO.txt
+
+          cd /tmp/dist-publish
+          git init -b dist
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .
+          git commit -m "build: bundle from ${GITHUB_SHA::7}"
+          git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push --force origin dist
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
