@@ -1,7 +1,7 @@
 {
   "name": "Larp",
-  "description": "[v10.1] Grille Nitro via showCustomAlert + sans bulle tooltip.",
-  "authors": [{ "name": "hello156165 (v10.1)" }],
+  "description": "[v10.3] Tap Nitro: copie link depuis ton vrai badge Nitro + payload léger. Date compte (ISO) en local.",
+  "authors": [{ "name": "hello156165 (v10.3)" }],
   "main": "index.js",
   "hash": "REPLACED_AT_BUILD_TIME",
   "vendetta": {

@@ -13,7 +13,7 @@
   "use strict";
 
   /** Bump with releases — visible in toast so you know the phone loaded this build (not an old CDN file). */
-  var LARP_UI_TAG = "v10.1";
+  var LARP_UI_TAG = "v10.3";
 
   // ---------------------------------------------------------------------
   // Resolve runtime APIs from `vendetta` (the arrow parameter Kettu
@@ -38,6 +38,8 @@
   var storage = vendetta.plugin.storage;
   if (storage.matchUsername == null) storage.matchUsername = "";
   if (storage.replaceUsername == null) storage.replaceUsername = "";
+  /** ISO date (ex. 2018-03-24 ou 2018-03-24T12:00:00Z) — « Membre depuis » local si username spoof actif. Vide = désactivé. */
+  if (storage.spoofAccountDateIso == null) storage.spoofAccountDateIso = "";
   if (typeof storage.badges !== "object" || storage.badges === null) {
     storage.badges = {};
   }
@@ -159,11 +161,60 @@
     BOOST_LARP_SET[BOOST_LARP_ORDER[_bi0]] = true;
   }
 
-  /** CDN + label for each larp-* badge id (JSX hook). Nitro/Boost stay larp-* so taps do not open broken Manage Nitro. */
+  /**
+   * Public Discord ids for Nitro / Boost Larp rows so tap = même logique que
+   * l’app (milestones natives). Les icônes restent celles du CDN Larp via JSX.
+   * `premium_tenure_36_month` reste en larp-* (collision Emerald / id client).
+   */
+  var NATIVE_PUBLIC_ID_BY_LARP = {
+    premium: "premium",
+    premium_tenure_3_month: "premium_tenure_3_month_v2",
+    premium_tenure_6_month: "premium_tenure_6_month_v2",
+    premium_tenure_12_month: "premium_tenure_12_month_v2",
+    premium_tenure_24_month: "premium_tenure_24_month_v2",
+    premium_tenure_emerald: "premium_tenure_36_month_v2",
+    premium_tenure_ruby: "premium_tenure_60_month_v2",
+    premium_tenure_opal: "premium_tenure_72_month_v2",
+    guild_boost_12: "guild_booster_lvl6",
+    guild_boost_24: "guild_booster_lvl9"
+  };
+
   var LARP_BADGE_META = {};
   for (var _bi = 0; _bi < BADGES.length; _bi++) {
     var _bb = BADGES[_bi];
-    LARP_BADGE_META["larp-" + _bb.id] = { uri: _bb.url, label: _bb.label };
+    var _entry = { uri: _bb.url, label: _bb.label };
+    LARP_BADGE_META["larp-" + _bb.id] = _entry;
+  }
+
+  function makeBadgePayload(b) {
+    var idOut = NATIVE_PUBLIC_ID_BY_LARP[b.id] || "larp-" + b.id;
+    var useNativeId = !!NATIVE_PUBLIC_ID_BY_LARP[b.id];
+    /** Icône uniquement via JSX (PNG CDN) — évite icon/source Discord qui ne matchent pas l’id public et cassent le tap. */
+    if (useNativeId) {
+      return { id: idOut, icon: " " };
+    }
+    var assetNum = firstResolvedAsset(collectAssetNames(b));
+    var row;
+    if (assetNum != null) {
+      row = {
+        id: idOut,
+        icon: assetNum,
+        source: assetNum,
+        description: b.label
+      };
+      return row;
+    }
+    return { id: idOut, description: b.label, icon: " " };
+  }
+
+  /** Copie link / onPress / metadata du badge Discord réel (indispensable pour ouvrir Nitro / milestones). */
+  function mergeBadgeInteractionFields(dst, src) {
+    if (!dst || !src) return;
+    for (var k in src) {
+      if (!Object.prototype.hasOwnProperty.call(src, k)) continue;
+      if (k === "id" || k === "icon" || k === "source") continue;
+      dst[k] = src[k];
+    }
   }
 
   function collectAssetNames(b) {
@@ -192,24 +243,6 @@
       } catch (_e) {}
     }
     return null;
-  }
-
-  function makeBadgePayload(b) {
-    var lid = "larp-" + b.id;
-    var assetNum = firstResolvedAsset(collectAssetNames(b));
-    if (assetNum != null) {
-      return {
-        id: lid,
-        description: b.label,
-        icon: assetNum,
-        source: assetNum
-      };
-    }
-    return {
-      id: lid,
-      description: b.label,
-      icon: " "
-    };
   }
 
   function getEnabledNitroLarpId() {
@@ -429,6 +462,8 @@
   // ---------------------------------------------------------------------
   // Patches (applied in onLoad, released in onUnload).
   // ---------------------------------------------------------------------
+  /** Filled only while useBadges runs for self + spoof active — JSX PNG for native ids without touching other users. */
+  var __larpJsxNativeSource = {};
   var unpatches = [];
   /** Cached UserStore reference (also used by badge patch). */
   var UserStoreRef = null;
@@ -439,6 +474,16 @@
     var t = s.trim();
     if (t.charAt(0) === "@") t = t.slice(1);
     return t.toLowerCase();
+  }
+
+  /** @returns {number|null} epoch ms */
+  function parseAccountDateIsoMs(s) {
+    if (s == null || typeof s !== "string") return null;
+    var t = s.trim();
+    if (!t) return null;
+    var d = Date.parse(t);
+    if (isNaN(d)) return null;
+    return d;
   }
 
   function getBadgesMap() {
@@ -467,6 +512,11 @@
       get: function (t, p, recv) {
         if (!shouldSpoofUser(t)) return Reflect.get(t, p, recv);
         var replace = (storage.replaceUsername || "").trim();
+        var spoofCreatedMs = parseAccountDateIsoMs(storage.spoofAccountDateIso);
+        if (spoofCreatedMs != null) {
+          if (p === "createdTimestamp" || p === "createdAtTimestamp") return spoofCreatedMs;
+          if (p === "createdAt" || p === "created_at") return new Date(spoofCreatedMs);
+        }
 
         if (p === "username") return replace;
 
@@ -487,6 +537,15 @@
       getOwnPropertyDescriptor: function (t, p) {
         if (!shouldSpoofUser(t)) return Reflect.getOwnPropertyDescriptor(t, p);
         var replace = (storage.replaceUsername || "").trim();
+        var spoofCreatedMs = parseAccountDateIsoMs(storage.spoofAccountDateIso);
+        if (spoofCreatedMs != null) {
+          if (p === "createdTimestamp" || p === "createdAtTimestamp") {
+            return { configurable: true, enumerable: true, value: spoofCreatedMs };
+          }
+          if (p === "createdAt" || p === "created_at") {
+            return { configurable: true, enumerable: true, value: new Date(spoofCreatedMs) };
+          }
+        }
         if (p === "username") {
           return {
             configurable: true,
@@ -537,6 +596,7 @@
       if (!hookKey) return;
 
       function badgeHandler(args, ret) {
+        __larpJsxNativeSource = {};
         if (!ret || !Array.isArray(ret)) return ret;
         var badgesMap = getBadgesMap();
         var hasAny = false;
@@ -574,6 +634,22 @@
 
         var nitroPick = getEnabledNitroLarpId();
         var boostPick = getEnabledBoostLarpId();
+
+        var nitroDonor = null;
+        for (var _ndo = 0; _ndo < base.length; _ndo++) {
+          if (isNativeNitroLike(base[_ndo])) {
+            nitroDonor = base[_ndo];
+            break;
+          }
+        }
+        var boostDonor = null;
+        for (var _bdo = 0; _bdo < base.length; _bdo++) {
+          if (isGuildBoostBadge(base[_bdo])) {
+            boostDonor = base[_bdo];
+            break;
+          }
+        }
+
         var hasRealNitro = nativeNitroCount(base) > 0;
         var hasRealBoost = nativeBoostCount(base) > 0;
         var stripNativeNitro = nitroPick != null && hasRealNitro;
@@ -611,8 +687,14 @@
           }
         }
         var lead = [];
-        if (nitroPayload) lead.push(nitroPayload);
-        if (boostPayload) lead.push(boostPayload);
+        if (nitroPayload) {
+          if (nitroDonor) mergeBadgeInteractionFields(nitroPayload, nitroDonor);
+          lead.push(nitroPayload);
+        }
+        if (boostPayload) {
+          if (boostDonor) mergeBadgeInteractionFields(boostPayload, boostDonor);
+          lead.push(boostPayload);
+        }
         var merged = lead.concat(base3).concat(otherAdditions);
         var annotated = [];
         for (var mj = 0; mj < merged.length; mj++) {
@@ -628,6 +710,28 @@
         for (var sj = 0; sj < annotated.length; sj++) {
           sorted.push(annotated[sj].row);
         }
+        if (nitroPayload && nitroPick) {
+          for (var _nk = 0; _nk < BADGES.length; _nk++) {
+            if (BADGES[_nk].id === nitroPick) {
+              __larpJsxNativeSource[String(nitroPayload.id)] = {
+                uri: BADGES[_nk].url,
+                label: BADGES[_nk].label
+              };
+              break;
+            }
+          }
+        }
+        if (boostPayload && boostPick) {
+          for (var _bk = 0; _bk < BADGES.length; _bk++) {
+            if (BADGES[_bk].id === boostPick) {
+              __larpJsxNativeSource[String(boostPayload.id)] = {
+                uri: BADGES[_bk].url,
+                label: BADGES[_bk].label
+              };
+              break;
+            }
+          }
+        }
         return sorted;
       }
 
@@ -635,193 +739,6 @@
     } catch (e) {
       console.error("[Larp] patchBadges failed", e);
     }
-  }
-
-  /** Action sheet key — must match hideActionSheet argument. */
-  var NITRO_MILESTONES_SHEET_KEY = "LarpNitroMilestones";
-
-  /** Official v2 tenure badge PNG hashes (XYZenix gist) for the milestone grid. */
-  var NITRO_SHEET_TIERS = [
-    { name: "Bronze", sub: "1 Month", h: "4f33c4a9c64ce221936bd256c356f91f" },
-    { name: "Silver", sub: "3 Months", h: "4514fab914bdbfb4ad2fa23df76121a6" },
-    { name: "Gold", sub: "6 Months", h: "2895086c18d5531d499862e41d1155a6" },
-    { name: "Platinum", sub: "1 Year", h: "0334688279c8359120922938dcb1d6f8" },
-    { name: "Diamond", sub: "2 Years", h: "0d61871f72bb9a33a7ae568c1fb4f20a" },
-    { name: "Emerald", sub: "3 Years", h: "11e2d339068b55d3a506cff34d3780f3" },
-    { name: "Ruby", sub: "5 Years", h: "cd5e2cfd9d7f27a8cdcd3e8a8d5dc9f4" },
-    { name: "Opal", sub: "6+ Years", h: "5b154df19c53dce2af92c9b61e6be5e2" }
-  ];
-
-  var LARP_BADGE_TO_SHEET_INDEX = {
-    "larp-premium": 0,
-    "larp-premium_tenure_3_month": 1,
-    "larp-premium_tenure_6_month": 2,
-    "larp-premium_tenure_12_month": 3,
-    "larp-premium_tenure_24_month": 4,
-    "larp-premium_tenure_36_month": 5,
-    "larp-premium_tenure_emerald": 5,
-    "larp-premium_tenure_ruby": 6,
-    "larp-premium_tenure_opal": 7
-  };
-
-  function larpNitroSheetSelectedIndex(openedId) {
-    if (typeof openedId !== "string") return -1;
-    if (LARP_BADGE_TO_SHEET_INDEX.hasOwnProperty(openedId)) {
-      return LARP_BADGE_TO_SHEET_INDEX[openedId];
-    }
-    return -1;
-  }
-
-  function isLarpNitroProfileBadgeId(id) {
-    return typeof id === "string" && id.indexOf("larp-premium") === 0;
-  }
-
-  function hideNitroMilestonesSheet() {
-    try {
-      var al = findByProps("openLazy", "close");
-      if (al && typeof al.close === "function") {
-        al.close();
-      }
-    } catch (_) {}
-    try {
-      var ac = findByProps("openLazy", "hideActionSheet");
-      if (ac && typeof ac.hideActionSheet === "function") {
-        ac.hideActionSheet(NITRO_MILESTONES_SHEET_KEY);
-      }
-    } catch (_2) {}
-  }
-
-  function openNitroMilestonesSheet(openedBadgeId) {
-    try {
-      if (
-        typeof vendetta !== "undefined" &&
-        vendetta.ui &&
-        vendetta.ui.alerts &&
-        typeof vendetta.ui.alerts.showCustomAlert === "function"
-      ) {
-        vendetta.ui.alerts.showCustomAlert(NitroMilestonesSheet, {
-          openedBadgeId: openedBadgeId
-        });
-        return true;
-      }
-    } catch (_a) {}
-    try {
-      var ac = findByProps("openLazy", "hideActionSheet");
-      if (ac && typeof ac.openLazy === "function") {
-        ac.openLazy(
-          Promise.resolve({ default: NitroMilestonesSheet }),
-          NITRO_MILESTONES_SHEET_KEY,
-          { openedBadgeId: openedBadgeId }
-        );
-        return true;
-      }
-    } catch (_b) {}
-    return false;
-  }
-
-  /** Bottom sheet: Nitro milestone grid (local preview, avoids broken Manage Nitro). */
-  function NitroMilestonesSheet(props) {
-    var openedId = (props && props.openedBadgeId) || "";
-    var sel = larpNitroSheetSelectedIndex(openedId);
-    var Image = RN.Image;
-    var cells = [];
-    for (var ci = 0; ci < NITRO_SHEET_TIERS.length; ci++) {
-      var row = NITRO_SHEET_TIERS[ci];
-      var uri = CDN + "/" + row.h + ".png";
-      var selected = sel === ci;
-      cells.push(
-        React.createElement(
-          View,
-          {
-            key: "nmt-" + ci,
-            style: {
-              width: "31%",
-              marginBottom: 14,
-              paddingVertical: 10,
-              paddingHorizontal: 4,
-              borderRadius: 12,
-              borderWidth: selected ? 2 : 0,
-              borderColor: selected ? "#5865f2" : "transparent",
-              backgroundColor: selected ? "#2b2d31" : "transparent",
-              alignItems: "center"
-            }
-          },
-          Image
-            ? React.createElement(Image, {
-                source: { uri: uri },
-                style: { width: 64, height: 64 },
-                resizeMode: "contain"
-              })
-            : null,
-          React.createElement(Text, {
-            style: { color: "#ffffff", fontWeight: "700", marginTop: 6, fontSize: 13, textAlign: "center" }
-          }, row.name),
-          React.createElement(Text, {
-            style: { color: "#b5bac1", fontSize: 11, textAlign: "center", marginTop: 2 }
-          }, row.sub),
-          selected
-            ? React.createElement(Text, {
-                style: {
-                  color: "#949ba4",
-                  fontSize: 10,
-                  marginTop: 6,
-                  textAlign: "center",
-                  lineHeight: 14
-                }
-              }, "Subscriber since —\n(Larp · aperçu local)")
-            : null
-        )
-      );
-    }
-
-    return React.createElement(
-      View,
-      { style: { backgroundColor: "#111214", paddingHorizontal: 14, paddingTop: 8, paddingBottom: 20 } },
-      React.createElement(Text, {
-        style: {
-          color: "#ffffff",
-          fontSize: 17,
-          fontWeight: "700",
-          textAlign: "center",
-          marginBottom: 6,
-          lineHeight: 22
-        }
-      }, "Celebrate Your Nitro Milestones in Style"),
-      React.createElement(Text, {
-        style: {
-          color: "#b5bac1",
-          fontSize: 13,
-          textAlign: "center",
-          marginBottom: 16,
-          lineHeight: 18
-        }
-      }, "Your badge will automatically evolve over time."),
-      React.createElement(ScrollView, {
-        style: { maxHeight: 420 },
-        showsVerticalScrollIndicator: false
-      },
-        React.createElement(View, {
-          style: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" }
-        }, cells)
-      ),
-      React.createElement(Pressable, {
-        onPress: hideNitroMilestonesSheet,
-        style: {
-          marginTop: 12,
-          paddingVertical: 12,
-          borderRadius: 8,
-          backgroundColor: "#4e5058",
-          alignItems: "center"
-        }
-      },
-        React.createElement(Text, {
-          style: { color: "#ffffff", fontWeight: "600", fontSize: 15 }
-        }, "Fermer")
-      ),
-      React.createElement(Text, {
-        style: { color: "#6d7278", fontSize: 11, textAlign: "center", marginTop: 10 }
-      }, "Larp — aucune donnée serveur ; affichage client uniquement.")
-    );
   }
 
   /**
@@ -841,27 +758,11 @@
         var n = Type.displayName || Type.name;
         if (n !== "ProfileBadge" && n !== "RenderedBadge") return ret;
         var id = ret.props.id;
-        if (typeof id !== "string" || id.indexOf("larp-") !== 0) return ret;
-        var meta = LARP_BADGE_META[id];
+        if (typeof id !== "string") return ret;
+        var meta = LARP_BADGE_META[id] || __larpJsxNativeSource[id];
         if (!meta) return ret;
         ret.props.source = { uri: meta.uri };
-        if (isLarpNitroProfileBadgeId(id)) {
-          ret.props.label = "";
-          ret.props.description = "";
-          ret.props.accessibilityLabel = meta.label;
-          ret.props.onPress = function (ev) {
-            try {
-              if (ev && typeof ev.stopPropagation === "function") {
-                ev.stopPropagation();
-              }
-            } catch (_s) {}
-            if (!openNitroMilestonesSheet(id)) {
-              try {
-                showToast("[Larp] Grille Nitro indisponible", getAssetIDByName("Small"));
-              } catch (_) {}
-            }
-          };
-        } else {
+        if (String(id).indexOf("larp-") === 0) {
           if (ret.props.description == null || ret.props.description === "") {
             ret.props.description = meta.label;
           }
@@ -1001,6 +902,15 @@
 
       field("User to replace (username)", matchValue, "matchUsername"),
       field("Replacement @handle", replaceValue, "replaceUsername"),
+
+      field(
+        "Date du compte (ISO, optionnel)",
+        storage.spoofAccountDateIso || "",
+        "spoofAccountDateIso"
+      ),
+      React.createElement(Text, {
+        style: { color: "#949ba4", fontSize: 11, marginBottom: 12, lineHeight: 15 }
+      }, "Ex. 2019-07-04 — modifie « Membre depuis » / createdAt en local uniquement, pour le même @ que ci‑dessus. Laisse vide pour la vraie date."),
 
       React.createElement(Text, {
         style: {
