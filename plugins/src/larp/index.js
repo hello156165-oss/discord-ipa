@@ -13,7 +13,7 @@
   "use strict";
 
   /** Bump with releases — visible in toast so you know the phone loaded this build (not an old CDN file). */
-  var LARP_UI_TAG = "v10.3";
+  var LARP_UI_TAG = "v10.5";
 
   // ---------------------------------------------------------------------
   // Resolve runtime APIs from `vendetta` (the arrow parameter Kettu
@@ -38,7 +38,7 @@
   var storage = vendetta.plugin.storage;
   if (storage.matchUsername == null) storage.matchUsername = "";
   if (storage.replaceUsername == null) storage.replaceUsername = "";
-  /** ISO date (ex. 2018-03-24 ou 2018-03-24T12:00:00Z) — « Membre depuis » local si username spoof actif. Vide = désactivé. */
+  /** ISO ou date FR JJ/MM/AAAA — « Membre depuis » (snowflake + profil + proxy). Vide = désactivé. */
   if (storage.spoofAccountDateIso == null) storage.spoofAccountDateIso = "";
   if (typeof storage.badges !== "object" || storage.badges === null) {
     storage.badges = {};
@@ -161,24 +161,6 @@
     BOOST_LARP_SET[BOOST_LARP_ORDER[_bi0]] = true;
   }
 
-  /**
-   * Public Discord ids for Nitro / Boost Larp rows so tap = même logique que
-   * l’app (milestones natives). Les icônes restent celles du CDN Larp via JSX.
-   * `premium_tenure_36_month` reste en larp-* (collision Emerald / id client).
-   */
-  var NATIVE_PUBLIC_ID_BY_LARP = {
-    premium: "premium",
-    premium_tenure_3_month: "premium_tenure_3_month_v2",
-    premium_tenure_6_month: "premium_tenure_6_month_v2",
-    premium_tenure_12_month: "premium_tenure_12_month_v2",
-    premium_tenure_24_month: "premium_tenure_24_month_v2",
-    premium_tenure_emerald: "premium_tenure_36_month_v2",
-    premium_tenure_ruby: "premium_tenure_60_month_v2",
-    premium_tenure_opal: "premium_tenure_72_month_v2",
-    guild_boost_12: "guild_booster_lvl6",
-    guild_boost_24: "guild_booster_lvl9"
-  };
-
   var LARP_BADGE_META = {};
   for (var _bi = 0; _bi < BADGES.length; _bi++) {
     var _bb = BADGES[_bi];
@@ -186,35 +168,25 @@
     LARP_BADGE_META["larp-" + _bb.id] = _entry;
   }
 
+  /**
+   * Nitro / Boost : jamais d’asset Discord dans la ligne (sinon le client ouvre
+   * « Manage Nitro » même avec id `larp-*`). Image = JSX + CDN uniquement.
+   */
   function makeBadgePayload(b) {
-    var idOut = NATIVE_PUBLIC_ID_BY_LARP[b.id] || "larp-" + b.id;
-    var useNativeId = !!NATIVE_PUBLIC_ID_BY_LARP[b.id];
-    /** Icône uniquement via JSX (PNG CDN) — évite icon/source Discord qui ne matchent pas l’id public et cassent le tap. */
-    if (useNativeId) {
-      return { id: idOut, icon: " " };
+    var idOut = "larp-" + b.id;
+    if (NITRO_LARP_SET[b.id] || BOOST_LARP_SET[b.id]) {
+      return { id: idOut, description: b.label, icon: " " };
     }
     var assetNum = firstResolvedAsset(collectAssetNames(b));
-    var row;
     if (assetNum != null) {
-      row = {
+      return {
         id: idOut,
         icon: assetNum,
         source: assetNum,
         description: b.label
       };
-      return row;
     }
     return { id: idOut, description: b.label, icon: " " };
-  }
-
-  /** Copie link / onPress / metadata du badge Discord réel (indispensable pour ouvrir Nitro / milestones). */
-  function mergeBadgeInteractionFields(dst, src) {
-    if (!dst || !src) return;
-    for (var k in src) {
-      if (!Object.prototype.hasOwnProperty.call(src, k)) continue;
-      if (k === "id" || k === "icon" || k === "source") continue;
-      dst[k] = src[k];
-    }
   }
 
   function collectAssetNames(b) {
@@ -462,9 +434,12 @@
   // ---------------------------------------------------------------------
   // Patches (applied in onLoad, released in onUnload).
   // ---------------------------------------------------------------------
-  /** Filled only while useBadges runs for self + spoof active — JSX PNG for native ids without touching other users. */
-  var __larpJsxNativeSource = {};
   var unpatches = [];
+  /** Évite la récursion quand shouldWrapUserForProxy lit `getCurrentUser` pendant le wrap. */
+  var __larpInsideUserStoreWrap = false;
+  /** Évite de patcher deux fois la même méthode de store profil. */
+  var __larpProfileStorePatched = {};
+
   /** Cached UserStore reference (also used by badge patch). */
   var UserStoreRef = null;
 
@@ -476,14 +451,24 @@
     return t.toLowerCase();
   }
 
-  /** @returns {number|null} epoch ms */
+  /** @returns {number|null} epoch ms — ISO, ou JJ/MM/AAAA (ex. 04/07/2019). */
   function parseAccountDateIsoMs(s) {
     if (s == null || typeof s !== "string") return null;
     var t = s.trim();
     if (!t) return null;
     var d = Date.parse(t);
-    if (isNaN(d)) return null;
-    return d;
+    if (!isNaN(d)) return d;
+    var fr = t.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})(?:\s+(\d{1,2}):(\d{2}))?$/);
+    if (fr) {
+      var day = parseInt(fr[1], 10);
+      var mon = parseInt(fr[2], 10) - 1;
+      var yr = parseInt(fr[3], 10);
+      var hr = fr[4] != null ? parseInt(fr[4], 10) : 12;
+      var mn = fr[5] != null ? parseInt(fr[5], 10) : 0;
+      var u = Date.UTC(yr, mon, day, hr, mn, 0, 0);
+      if (!isNaN(u)) return u;
+    }
+    return null;
   }
 
   function getBadgesMap() {
@@ -504,19 +489,43 @@
     return un === match;
   }
 
+  function shouldWrapUserForProxy(user) {
+    if (!user) return false;
+    if (shouldSpoofUser(user)) return true;
+    if (parseAccountDateIsoMs(storage.spoofAccountDateIso) == null) return false;
+    var cur =
+      UserStoreRef &&
+      UserStoreRef.getCurrentUser &&
+      UserStoreRef.getCurrentUser();
+    if (!cur || cur.id == null || user.id == null) return false;
+    return String(user.id) === String(cur.id);
+  }
+
   function buildUserProxy(user) {
     var prev = wrapProxyByUser.get(user);
     if (prev) return prev;
 
     var proxy = new Proxy(user, {
       get: function (t, p, recv) {
-        if (!shouldSpoofUser(t)) return Reflect.get(t, p, recv);
-        var replace = (storage.replaceUsername || "").trim();
+        var cur =
+          UserStoreRef &&
+          UserStoreRef.getCurrentUser &&
+          UserStoreRef.getCurrentUser();
         var spoofCreatedMs = parseAccountDateIsoMs(storage.spoofAccountDateIso);
-        if (spoofCreatedMs != null) {
+        if (
+          spoofCreatedMs != null &&
+          cur &&
+          cur.id != null &&
+          t &&
+          t.id != null &&
+          String(t.id) === String(cur.id)
+        ) {
           if (p === "createdTimestamp" || p === "createdAtTimestamp") return spoofCreatedMs;
           if (p === "createdAt" || p === "created_at") return new Date(spoofCreatedMs);
         }
+
+        if (!shouldSpoofUser(t)) return Reflect.get(t, p, recv);
+        var replace = (storage.replaceUsername || "").trim();
 
         if (p === "username") return replace;
 
@@ -535,10 +544,19 @@
         return Reflect.ownKeys(t);
       },
       getOwnPropertyDescriptor: function (t, p) {
-        if (!shouldSpoofUser(t)) return Reflect.getOwnPropertyDescriptor(t, p);
-        var replace = (storage.replaceUsername || "").trim();
+        var cur =
+          UserStoreRef &&
+          UserStoreRef.getCurrentUser &&
+          UserStoreRef.getCurrentUser();
         var spoofCreatedMs = parseAccountDateIsoMs(storage.spoofAccountDateIso);
-        if (spoofCreatedMs != null) {
+        if (
+          spoofCreatedMs != null &&
+          cur &&
+          cur.id != null &&
+          t &&
+          t.id != null &&
+          String(t.id) === String(cur.id)
+        ) {
           if (p === "createdTimestamp" || p === "createdAtTimestamp") {
             return { configurable: true, enumerable: true, value: spoofCreatedMs };
           }
@@ -546,6 +564,9 @@
             return { configurable: true, enumerable: true, value: new Date(spoofCreatedMs) };
           }
         }
+
+        if (!shouldSpoofUser(t)) return Reflect.getOwnPropertyDescriptor(t, p);
+        var replace = (storage.replaceUsername || "").trim();
         if (p === "username") {
           return {
             configurable: true,
@@ -562,7 +583,7 @@
 
   function wrap(user) {
     if (!user) return user;
-    if (!shouldSpoofUser(user)) return user;
+    if (!shouldWrapUserForProxy(user)) return user;
     return buildUserProxy(user);
   }
 
@@ -573,13 +594,157 @@
       if (!UserStore || typeof UserStore.getCurrentUser !== "function") return;
 
       unpatches.push(after("getCurrentUser", UserStore, function (_args, ret) {
-        return wrap(ret);
+        if (__larpInsideUserStoreWrap) return ret;
+        __larpInsideUserStoreWrap = true;
+        try {
+          return wrap(ret);
+        } finally {
+          __larpInsideUserStoreWrap = false;
+        }
       }));
       unpatches.push(after("getUser", UserStore, function (_args, ret) {
-        return wrap(ret);
+        if (__larpInsideUserStoreWrap) return ret;
+        __larpInsideUserStoreWrap = true;
+        try {
+          return wrap(ret);
+        } finally {
+          __larpInsideUserStoreWrap = false;
+        }
       }));
     } catch (e) {
       console.error("[Larp] patchUsername failed", e);
+    }
+  }
+
+  function patchSnowflakeConvertersForAccountDate() {
+    try {
+      var findAll = vendetta.metro.findAll;
+      if (typeof findAll !== "function") return;
+      var epochRe = /1420070400000/;
+      var shiftRe = />>\s*22|<<\s*22n|\*\s*4194304|4423680|\/\s*4194304/;
+      var maxPatches = 14;
+      var patched = 0;
+
+      var mods = findAll(function (exp) {
+        if (!exp || typeof exp !== "object") return false;
+        for (var k in exp) {
+          try {
+            if (!Object.prototype.hasOwnProperty.call(exp, k)) continue;
+            if (typeof k !== "string") continue;
+            var v = exp[k];
+            if (typeof v !== "function") continue;
+            var fs = Function.prototype.toString.call(v);
+            if (!epochRe.test(fs) || !shiftRe.test(fs)) continue;
+            if (fs.length > 2200) continue;
+            return true;
+          } catch (_e0) {}
+        }
+        return false;
+      });
+      if (!mods || !mods.length) return;
+
+      for (var mi = 0; mi < mods.length && patched < maxPatches; mi++) {
+        var exp = mods[mi];
+        if (!exp || typeof exp !== "object") continue;
+        for (var k in exp) {
+          if (patched >= maxPatches) break;
+          try {
+            if (!Object.prototype.hasOwnProperty.call(exp, k)) continue;
+            if (typeof k !== "string") continue;
+            var v = exp[k];
+            if (typeof v !== "function") continue;
+            var fs = Function.prototype.toString.call(v);
+            if (!epochRe.test(fs) || !shiftRe.test(fs)) continue;
+            if (fs.length > 2200) continue;
+
+            unpatches.push(
+              after(k, exp, function (args, ret) {
+                var ms = parseAccountDateIsoMs(storage.spoofAccountDateIso);
+                if (ms == null) return ret;
+                var cur =
+                  UserStoreRef &&
+                  UserStoreRef.getCurrentUser &&
+                  UserStoreRef.getCurrentUser();
+                if (!cur || cur.id == null) return ret;
+                var sid = null;
+                if (args && args.length) {
+                  var a0 = args[0];
+                  if (typeof a0 === "bigint") sid = String(a0);
+                  else if (typeof a0 === "string" && /^\d{10,30}$/.test(a0)) sid = a0;
+                  else if (typeof a0 === "number" && isFinite(a0)) sid = String(Math.trunc(a0));
+                  else if (a0 != null && a0.id != null) {
+                    var ids = String(a0.id);
+                    if (/^\d{10,30}$/.test(ids)) sid = ids;
+                  }
+                }
+                if (sid != null && String(sid) === String(cur.id)) return ms;
+                return ret;
+              })
+            );
+            patched++;
+          } catch (_e1) {}
+        }
+      }
+    } catch (e) {
+      console.error("[Larp] patchSnowflakeConvertersForAccountDate failed", e);
+    }
+  }
+
+  function patchUserProfileRecordMemberSince() {
+    try {
+      var storeNames = ["UserProfileStore", "UserProfileStoreV2", "GuildMemberProfileStore"];
+      var methods = ["getUserProfile", "getProfile", "getMutableUserProfiles", "getMutableUsers"];
+      for (var si = 0; si < storeNames.length; si++) {
+        var S = findByStoreName(storeNames[si]);
+        if (!S) continue;
+        for (var mj = 0; mj < methods.length; mj++) {
+          var mn = methods[mj];
+          var pkey = storeNames[si] + ":" + mn;
+          if (__larpProfileStorePatched[pkey]) continue;
+          if (typeof S[mn] !== "function") continue;
+          __larpProfileStorePatched[pkey] = true;
+
+          unpatches.push(
+            after(mn, S, function (args, ret) {
+              var ms = parseAccountDateIsoMs(storage.spoofAccountDateIso);
+              if (ms == null || ret == null) return ret;
+              var a0 = args && args[0];
+              var uid =
+                a0 != null && typeof a0 === "object"
+                  ? a0.id || a0.userId || (a0.user && (a0.user.id || a0.user.userId))
+                  : a0;
+              if (uid == null) return ret;
+              var cur =
+                UserStoreRef &&
+                UserStoreRef.getCurrentUser &&
+                UserStoreRef.getCurrentUser();
+              if (!cur || cur.id == null) return ret;
+              if (String(uid) !== String(cur.id)) return ret;
+              if (typeof ret !== "object") return ret;
+              try {
+                var d = new Date(ms);
+                var merged = Object.assign({}, ret, {
+                  createdAt: d,
+                  memberSince: d,
+                  joinedAt: d,
+                  createdTimestamp: ms
+                });
+                if (ret.user && typeof ret.user === "object") {
+                  merged.user = Object.assign({}, ret.user, {
+                    createdAt: d,
+                    createdTimestamp: ms
+                  });
+                }
+                return merged;
+              } catch (_e) {
+                return ret;
+              }
+            })
+          );
+        }
+      }
+    } catch (e) {
+      console.error("[Larp] patchUserProfileRecordMemberSince failed", e);
     }
   }
 
@@ -596,7 +761,6 @@
       if (!hookKey) return;
 
       function badgeHandler(args, ret) {
-        __larpJsxNativeSource = {};
         if (!ret || !Array.isArray(ret)) return ret;
         var badgesMap = getBadgesMap();
         var hasAny = false;
@@ -635,21 +799,6 @@
         var nitroPick = getEnabledNitroLarpId();
         var boostPick = getEnabledBoostLarpId();
 
-        var nitroDonor = null;
-        for (var _ndo = 0; _ndo < base.length; _ndo++) {
-          if (isNativeNitroLike(base[_ndo])) {
-            nitroDonor = base[_ndo];
-            break;
-          }
-        }
-        var boostDonor = null;
-        for (var _bdo = 0; _bdo < base.length; _bdo++) {
-          if (isGuildBoostBadge(base[_bdo])) {
-            boostDonor = base[_bdo];
-            break;
-          }
-        }
-
         var hasRealNitro = nativeNitroCount(base) > 0;
         var hasRealBoost = nativeBoostCount(base) > 0;
         var stripNativeNitro = nitroPick != null && hasRealNitro;
@@ -687,14 +836,8 @@
           }
         }
         var lead = [];
-        if (nitroPayload) {
-          if (nitroDonor) mergeBadgeInteractionFields(nitroPayload, nitroDonor);
-          lead.push(nitroPayload);
-        }
-        if (boostPayload) {
-          if (boostDonor) mergeBadgeInteractionFields(boostPayload, boostDonor);
-          lead.push(boostPayload);
-        }
+        if (nitroPayload) lead.push(nitroPayload);
+        if (boostPayload) lead.push(boostPayload);
         var merged = lead.concat(base3).concat(otherAdditions);
         var annotated = [];
         for (var mj = 0; mj < merged.length; mj++) {
@@ -709,28 +852,6 @@
         var sorted = [];
         for (var sj = 0; sj < annotated.length; sj++) {
           sorted.push(annotated[sj].row);
-        }
-        if (nitroPayload && nitroPick) {
-          for (var _nk = 0; _nk < BADGES.length; _nk++) {
-            if (BADGES[_nk].id === nitroPick) {
-              __larpJsxNativeSource[String(nitroPayload.id)] = {
-                uri: BADGES[_nk].url,
-                label: BADGES[_nk].label
-              };
-              break;
-            }
-          }
-        }
-        if (boostPayload && boostPick) {
-          for (var _bk = 0; _bk < BADGES.length; _bk++) {
-            if (BADGES[_bk].id === boostPick) {
-              __larpJsxNativeSource[String(boostPayload.id)] = {
-                uri: BADGES[_bk].url,
-                label: BADGES[_bk].label
-              };
-              break;
-            }
-          }
         }
         return sorted;
       }
@@ -759,10 +880,22 @@
         if (n !== "ProfileBadge" && n !== "RenderedBadge") return ret;
         var id = ret.props.id;
         if (typeof id !== "string") return ret;
-        var meta = LARP_BADGE_META[id] || __larpJsxNativeSource[id];
+        var meta = LARP_BADGE_META[id];
         if (!meta) return ret;
         ret.props.source = { uri: meta.uri };
         if (String(id).indexOf("larp-") === 0) {
+          var innerId = id.slice(5);
+          if (NITRO_LARP_SET[innerId] || BOOST_LARP_SET[innerId]) {
+            try {
+              delete ret.props.link;
+              delete ret.props.href;
+              delete ret.props.to;
+              delete ret.props.route;
+              delete ret.props.navigation;
+            } catch (_lp) {}
+            ret.props.onPress = undefined;
+            ret.props.onLongPress = undefined;
+          }
           if (ret.props.description == null || ret.props.description === "") {
             ret.props.description = meta.label;
           }
@@ -904,13 +1037,13 @@
       field("Replacement @handle", replaceValue, "replaceUsername"),
 
       field(
-        "Date du compte (ISO, optionnel)",
+        "Date du compte (ISO ou JJ/MM/AAAA)",
         storage.spoofAccountDateIso || "",
         "spoofAccountDateIso"
       ),
       React.createElement(Text, {
         style: { color: "#949ba4", fontSize: 11, marginBottom: 12, lineHeight: 15 }
-      }, "Ex. 2019-07-04 — modifie « Membre depuis » / createdAt en local uniquement, pour le même @ que ci‑dessus. Laisse vide pour la vraie date."),
+      }, "Ex. 2019-07-04 ou 04/07/2019. Recharge le profil après changement. Si ça ne bouge pas, Discord lit parfois seulement l’id — on patche quand même profil + utilitaires snowflake."),
 
       React.createElement(Text, {
         style: {
@@ -1000,6 +1133,8 @@
         showToast("[Larp] " + LARP_UI_TAG + " actif", getAssetIDByName("Check"));
       } catch (_) {}
       patchUsername();
+      patchSnowflakeConvertersForAccountDate();
+      patchUserProfileRecordMemberSince();
       patchBadges();
       patchBadgeIconsViaJsx();
     },
