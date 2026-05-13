@@ -85,25 +85,47 @@
   // Patches (applied in onLoad, released in onUnload).
   // ---------------------------------------------------------------------
   var unpatches = [];
+  /** Cached UserStore reference (also used by badge patch). */
+  var UserStoreRef = null;
+
+  /** Trim, strip leading @, lowercase — for comparing usernames. */
+  function normName(s) {
+    if (s == null || typeof s !== "string") return "";
+    var t = s.trim();
+    if (t.charAt(0) === "@") t = t.slice(1);
+    return t.toLowerCase();
+  }
+
+  function getBadgesMap() {
+    var b = storage.badges;
+    if (!b || typeof b !== "object") return {};
+    return b;
+  }
 
   function patchUsername() {
     try {
       var UserStore = findByStoreName("UserStore");
+      UserStoreRef = UserStore || null;
       if (!UserStore || typeof UserStore.getCurrentUser !== "function") return;
 
       function wrap(user) {
         if (!user) return user;
-        var match = storage.matchUsername;
-        var replace = storage.replaceUsername;
+        var match = normName(storage.matchUsername || "");
+        var replace = (storage.replaceUsername || "").trim();
         if (!match || !replace) return user;
-        if (user.username !== match) return user;
-        return new Proxy(user, {
-          get: function (t, p) {
-            if (p === "username") return replace;
-            if (p === "globalName" && t.globalName === match) return replace;
-            return t[p];
-          }
-        });
+        var un = normName(user.username || "");
+        var gn = normName(user.globalName || user.global_name || "");
+        if (un !== match && gn !== match) return user;
+        // Shallow copy (Discord/React often spreads user objects; Proxy breaks that).
+        var out = Object.assign({}, user);
+        out.username = replace;
+        if (gn === match || normName(out.globalName || "") === match) {
+          out.globalName = replace;
+        }
+        if (out.global_name != null && normName(out.global_name) === match) {
+          out.global_name = replace;
+        }
+        return out;
       }
 
       unpatches.push(after("getCurrentUser", UserStore, function (_args, ret) {
@@ -119,20 +141,46 @@
 
   function patchBadges() {
     try {
+      // Kettu's own badges plugin patches `default` on the raw `useBadges`
+      // module — the hook is module.default, NOT a named export `useBadges`.
       var mod = findByName("useBadges", false);
-      if (!mod || typeof mod.useBadges !== "function") return;
+      if (!mod) return;
+      var hookKey = typeof mod.default === "function" ? "default" : null;
+      if (!hookKey && typeof mod.useBadges === "function") {
+        hookKey = "useBadges";
+      }
+      if (!hookKey) return;
 
-      unpatches.push(after("useBadges", mod, function (_args, ret) {
-        var current = Array.isArray(ret) ? ret.slice() : [];
-        var ids = Object.keys(storage.badges || {});
-        for (var i = 0; i < BADGES.length; i++) {
+      function badgeHandler(args, ret) {
+        if (!ret || !Array.isArray(ret)) return ret;
+        var badgesMap = getBadgesMap();
+        var hasAny = false;
+        for (var k in badgesMap) {
+          if (badgesMap[k]) { hasAny = true; break; }
+        }
+        if (!hasAny) return ret;
+
+        var u = args && args[0];
+        var uid =
+          (u && (u.userId || u.id)) ||
+          (u && u.user && (u.user.id || u.user.userId));
+        var cur =
+          UserStoreRef &&
+          UserStoreRef.getCurrentUser &&
+          UserStoreRef.getCurrentUser();
+        var curId = cur && cur.id;
+        if (!uid || !curId || String(uid) !== String(curId)) return ret;
+
+        for (var i = BADGES.length - 1; i >= 0; i--) {
           var b = BADGES[i];
-          if (storage.badges[b.id]) {
-            current.unshift(makeBadgePayload(b));
+          if (badgesMap[b.id]) {
+            ret.unshift(makeBadgePayload(b));
           }
         }
-        return current;
-      }));
+        return ret;
+      }
+
+      unpatches.push(after(hookKey, mod, badgeHandler));
     } catch (e) {
       console.error("[Larp] patchBadges failed", e);
     }
@@ -220,6 +268,9 @@
       React.createElement(Text, {
         style: { color: "#b5bac1", fontSize: 13, marginBottom: 20 }
       }, "100% local. Personne d'autre ne voit ces changements."),
+      React.createElement(Text, {
+        style: { color: "#949ba4", fontSize: 12, marginBottom: 12 }
+      }, "Pseudo : ton vrai username Discord (sans @), la comparaison ignore majuscules/minuscules."),
 
       field("User to replace", matchValue, "matchUsername"),
       field("Replacement", replaceValue, "replaceUsername"),

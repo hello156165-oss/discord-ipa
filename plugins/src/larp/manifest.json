@@ -1,7 +1,7 @@
 {
   "name": "Larp",
-  "description": "[v9-simple] Local username spoofer + Discord badges, 100% client-side.",
-  "authors": [{ "name": "hello156165 (v9-simple)" }],
+  "description": "[v9.1-fix] Local username + badges (fixed useBadges patch + username match).",
+  "authors": [{ "name": "hello156165 (v9.1)" }],
   "main": "index.js",
   "hash": "REPLACED_AT_BUILD_TIME",
   "vendetta": {
