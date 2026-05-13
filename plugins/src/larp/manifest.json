@@ -1,7 +1,7 @@
 {
   "name": "Larp",
-  "description": "[v10.0] Tap Nitro Larp → feuille « Milestones » (grille locale). Ordre plaque v9.9.",
-  "authors": [{ "name": "hello156165 (v10.0)" }],
+  "description": "[v10.1] Grille Nitro via showCustomAlert + sans bulle tooltip.",
+  "authors": [{ "name": "hello156165 (v10.1)" }],
   "main": "index.js",
   "hash": "REPLACED_AT_BUILD_TIME",
   "vendetta": {

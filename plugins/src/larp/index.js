@@ -13,7 +13,7 @@
   "use strict";
 
   /** Bump with releases — visible in toast so you know the phone loaded this build (not an old CDN file). */
-  var LARP_UI_TAG = "v10.0";
+  var LARP_UI_TAG = "v10.1";
 
   // ---------------------------------------------------------------------
   // Resolve runtime APIs from `vendetta` (the arrow parameter Kettu
@@ -678,14 +678,33 @@
 
   function hideNitroMilestonesSheet() {
     try {
+      var al = findByProps("openLazy", "close");
+      if (al && typeof al.close === "function") {
+        al.close();
+      }
+    } catch (_) {}
+    try {
       var ac = findByProps("openLazy", "hideActionSheet");
       if (ac && typeof ac.hideActionSheet === "function") {
         ac.hideActionSheet(NITRO_MILESTONES_SHEET_KEY);
       }
-    } catch (_) {}
+    } catch (_2) {}
   }
 
   function openNitroMilestonesSheet(openedBadgeId) {
+    try {
+      if (
+        typeof vendetta !== "undefined" &&
+        vendetta.ui &&
+        vendetta.ui.alerts &&
+        typeof vendetta.ui.alerts.showCustomAlert === "function"
+      ) {
+        vendetta.ui.alerts.showCustomAlert(NitroMilestonesSheet, {
+          openedBadgeId: openedBadgeId
+        });
+        return true;
+      }
+    } catch (_a) {}
     try {
       var ac = findByProps("openLazy", "hideActionSheet");
       if (ac && typeof ac.openLazy === "function") {
@@ -696,7 +715,7 @@
         );
         return true;
       }
-    } catch (_) {}
+    } catch (_b) {}
     return false;
   }
 
@@ -826,17 +845,26 @@
         var meta = LARP_BADGE_META[id];
         if (!meta) return ret;
         ret.props.source = { uri: meta.uri };
-        if (ret.props.description == null || ret.props.description === "") {
-          ret.props.description = meta.label;
-        }
         if (isLarpNitroProfileBadgeId(id)) {
-          ret.props.onPress = function () {
+          ret.props.label = "";
+          ret.props.description = "";
+          ret.props.accessibilityLabel = meta.label;
+          ret.props.onPress = function (ev) {
+            try {
+              if (ev && typeof ev.stopPropagation === "function") {
+                ev.stopPropagation();
+              }
+            } catch (_s) {}
             if (!openNitroMilestonesSheet(id)) {
               try {
                 showToast("[Larp] Grille Nitro indisponible", getAssetIDByName("Small"));
               } catch (_) {}
             }
           };
+        } else {
+          if (ret.props.description == null || ret.props.description === "") {
+            ret.props.description = meta.label;
+          }
         }
         return ret;
       }
