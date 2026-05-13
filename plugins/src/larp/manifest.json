@@ -1,0 +1,12 @@
+{
+  "id": "fr.hello156165.larp",
+  "version": "1.0.0",
+  "type": "plugin",
+  "spec": 3,
+  "main": "index.js",
+  "display": {
+    "name": "Larp",
+    "description": "Modify your local Discord appearance: custom username, badges, account creation date. Everything is local and visible only to you.",
+    "authors": [{ "name": "hello156165" }]
+  }
+}

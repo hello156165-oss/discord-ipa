@@ -1,8 +1,24 @@
-name: Build Kettu JS Bundle
+name: Build Kettu JS Bundle and Plugins
 
-# Build le bundle JavaScript depuis Kettu/ et le publie sur la branche `dist`.
-# URL d'utilisation pour "Custom Load URL" dans Kettu :
-#   https://raw.githubusercontent.com/<TON_USER>/<TON_REPO>/dist/kettu.js
+# Build the Kettu JS bundle AND the external plugins, then publish everything
+# onto the `dist` branch as a single force-push so consumers can pin a stable
+# URL.
+#
+# Resulting layout on the `dist` branch:
+#   /
+#   ├── kettu.js
+#   ├── kettu.min.js          (same content; kept under the default name used by the tweak)
+#   ├── BUILD_INFO.txt
+#   └── plugins/
+#       ├── repo.json          ← add this URL in Kettu → Plugins → Add custom plugin repository
+#       └── builds/
+#           └── <plugin-id>/
+#               ├── manifest.json
+#               └── index.js
+#
+# Custom URLs once the repo is public:
+#   Bundle:  https://raw.githubusercontent.com/<owner>/<repo>/dist/kettu.js
+#   Plugins: https://raw.githubusercontent.com/<owner>/<repo>/dist/plugins/
 
 on:
   workflow_dispatch:
@@ -13,11 +29,15 @@ on:
       - 'Kettu/package.json'
       - 'Kettu/bun.lock'
       - 'Kettu/scripts/**'
+      - 'plugins/src/**'
+      - 'plugins/build.mjs'
+      - 'plugins/package.json'
+      - 'plugins/bunny-types.d.ts'
       - '.github/workflows/build-bundle.yml'
 
 jobs:
   build:
-    name: Build kettu.js
+    name: Build bundle + plugins
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -31,42 +51,88 @@ jobs:
         with:
           bun-version: latest
 
+      # -----------------------------------------------------------------
+      # Build the Kettu JS bundle
+      # -----------------------------------------------------------------
       - name: Install Kettu dependencies
         working-directory: ./Kettu
         run: bun install --frozen-lockfile
 
-      - name: Build bundle
+      - name: Build Kettu bundle
         working-directory: ./Kettu
         run: bun run build
 
-      - name: Verify bundle output
+      - name: Verify Kettu bundle
         run: |
           ls -lh Kettu/dist/
           file Kettu/dist/kettu.js
-          echo "Bundle size: $(du -h Kettu/dist/kettu.js | cut -f1)"
+          echo "Kettu bundle size: $(du -h Kettu/dist/kettu.js | cut -f1)"
 
-      - name: Upload bundle as artifact
+      # -----------------------------------------------------------------
+      # Build the external plugins
+      # -----------------------------------------------------------------
+      - name: Install plugin build dependencies
+        working-directory: ./plugins
+        run: bun install --no-save
+
+      - name: Build plugins
+        working-directory: ./plugins
+        run: node build.mjs
+
+      - name: Verify plugin builds
+        run: |
+          ls -lh plugins/builds/ || true
+          find plugins/builds -type f \( -name '*.json' -o -name '*.js' \) | sort
+          cat plugins/builds/repo.json
+
+      # -----------------------------------------------------------------
+      # Upload artifacts so we can also download builds from the Actions UI
+      # -----------------------------------------------------------------
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: kettu-js-bundle
-          path: Kettu/dist/kettu.js
+          name: kettu-bundle-and-plugins
+          path: |
+            Kettu/dist/kettu.js
+            plugins/builds/**/*
+            plugins/repo.json
           if-no-files-found: error
 
-      - name: Publish bundle to `dist` branch
+      # -----------------------------------------------------------------
+      # Publish to the `dist` branch
+      # -----------------------------------------------------------------
+      - name: Publish to `dist` branch
         run: |
-          # Prépare un dossier temporaire avec uniquement le bundle
-          mkdir -p /tmp/dist-publish
-          cp Kettu/dist/kettu.js /tmp/dist-publish/
-          # Copie aussi en kettu.min.js (l'URL par défaut du tweak utilise ce nom)
-          cp Kettu/dist/kettu.js /tmp/dist-publish/kettu.min.js
-          echo "Built on $(date -u) from commit ${GITHUB_SHA}" > /tmp/dist-publish/BUILD_INFO.txt
+          PUBLISH_DIR=/tmp/dist-publish
+          mkdir -p "$PUBLISH_DIR/plugins"
 
-          cd /tmp/dist-publish
+          # Kettu bundle
+          cp Kettu/dist/kettu.js "$PUBLISH_DIR/kettu.js"
+          cp Kettu/dist/kettu.js "$PUBLISH_DIR/kettu.min.js"
+
+          # Plugin builds
+          cp plugins/repo.json "$PUBLISH_DIR/plugins/repo.json"
+          if [ -d plugins/builds ]; then
+            mkdir -p "$PUBLISH_DIR/plugins/builds"
+            cp -R plugins/builds/. "$PUBLISH_DIR/plugins/builds/"
+          fi
+
+          # Build metadata
+          {
+            echo "Built on $(date -u)"
+            echo "Source commit: ${GITHUB_SHA}"
+            echo
+            echo "URLs:"
+            echo "  Bundle:    https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/dist/kettu.js"
+            echo "  Plugin repo: https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/dist/plugins/repo.json"
+          } > "$PUBLISH_DIR/BUILD_INFO.txt"
+
+          cd "$PUBLISH_DIR"
           git init -b dist
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add .
-          git commit -m "build: bundle from ${GITHUB_SHA::7}"
+          git commit -m "build: bundle + plugins from ${GITHUB_SHA::7}"
           git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git push --force origin dist
         env:

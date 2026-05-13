@@ -15,8 +15,13 @@ Monorepo personnel pour builder un Discord iOS moddé avec [Kettu](https://githu
 │   ├── Headers/
 │   ├── Makefile               # Build Theos → produit un .deb
 │   └── control                # Métadonnées package (Name, Version, etc.)
+├── plugins/                   # Plugins externes pour Kettu
+│   ├── src/<plugin-id>/       # Sources d'un plugin (manifest.json + code TS/TSX)
+│   ├── build.mjs              # Bundle chaque plugin en IIFE pour le loader Kettu
+│   ├── bunny-types.d.ts       # Déclarations TS du global `bunny`
+│   └── builds/                # (généré) plugins compilés + repo.json
 └── .github/workflows/
-    ├── build-bundle.yml       # Build le JS et publie sur branche `dist`
+    ├── build-bundle.yml       # Build le JS Kettu + plugins → branche `dist`
     └── build-ipa.yml          # Build le tweak + injecte dans Discord IPA → IPA final
 ```
 
@@ -143,6 +148,53 @@ git remote add origin https://github.com/<TON_USER>/<TON_REPO>.git
 git branch -M main
 git push -u origin main
 ```
+
+---
+
+---
+
+## Plugins externes
+
+Ce monorepo héberge aussi un système de **plugins externes** (style Bunny) buildés en parallèle du bundle Kettu. Chaque plugin vit dans `plugins/src/<id>/` avec son `manifest.json` et son entrée `index.tsx`.
+
+### Build local d'un plugin
+
+```sh
+cd plugins
+bun install
+node build.mjs            # produit plugins/builds/<plugin-id>/{manifest.json,index.js}
+                          # et plugins/repo.json
+node build.mjs --watch    # rebuild à chaque changement
+```
+
+### Ajouter un plugin au repo
+
+1. `mkdir plugins/src/<mon-plugin>`
+2. Y mettre :
+   - `manifest.json` (cf. `plugins/src/larp/manifest.json` pour l'exemple)
+   - `index.tsx` qui termine par `export default definePlugin({ start, stop, SettingsComponent })`
+3. `node build.mjs`
+4. Commit + push → la GHA `Build Kettu JS Bundle and Plugins` rebuild et republie sur la branche `dist`
+
+### Plugin Larp (inclus)
+
+Modifie localement ton apparence Discord (visible que par toi) :
+- **Username / display name / discriminator** custom
+- **Badges** à cocher/décocher (Staff, Partner, HypeSquad, Nitro, Active Developer, …)
+- **Date de création** du compte
+
+Tous les overrides sont 100 % locaux — rien n'est envoyé à Discord.
+
+### Utiliser les plugins dans Kettu sur iPhone
+
+> ⚠ Le repo doit être **public** pour que `raw.githubusercontent.com` réponde sans token. Soit :
+>   - Rends le repo public (Settings → General → Change visibility)
+>   - **OU** active GitHub Pages sur la branche `dist` et utilise l'URL `https://<user>.github.io/<repo>/plugins/repo.json`
+
+1. Dans Discord moddé → Paramètres → **Plugins** → bouton **+** (ajouter un repo)
+2. Colle : `https://raw.githubusercontent.com/hello156165-oss/discord-ipa/dist/plugins/repo.json`
+3. Le plugin "Larp" apparaît dans la liste → installer → activer
+4. Un nouvel onglet **"Larp"** apparaît dans les paramètres Discord → configure tes overrides
 
 ---
 
