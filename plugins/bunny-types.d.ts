@@ -1,51 +1,38 @@
 /**
- * Type declarations for the `bunny` and `definePlugin` globals injected
- * by the Kettu plugin loader at runtime.
+ * Type declarations for the `bunny` global (Kettu) exposed at runtime via
+ * `window.bunny`, plus the Vendetta plugin loader contract used by Kettu's
+ * settings UI.
  *
- * Reference: Kettu/src/lib/addons/plugins/api.ts (createBunnyPluginApi)
+ * Reference:
+ *   - Kettu/src/core/vendetta/plugins.ts (evalPlugin / fetchPlugin)
+ *   - Kettu/src/lib/addons/plugins/api.ts (createBunnyPluginApi)
  */
 
 import type * as React from "react";
 
 declare global {
   // ---------------------------------------------------------------------------
-  // Plugin entrypoint helpers
+  // Vendetta plugin shape (what the loader expects to receive)
   // ---------------------------------------------------------------------------
 
-  interface PluginInstance {
-    start?(): void;
-    stop?(): void;
-    SettingsComponent?: React.ComponentType<any>;
-  }
-
-  /**
-   * Injected by Kettu's plugin instantiator wrapper.
-   * Decorates the plugin with its manifest and returns the same object.
-   */
-  const definePlugin: <T extends PluginInstance>(p: T) => T & {
-    manifest: BunnyManifest;
-  };
-
-  // ---------------------------------------------------------------------------
-  // Manifest
-  // ---------------------------------------------------------------------------
-
-  interface BunnyAuthor {
+  interface VendettaAuthor {
     name: string;
     id?: `${bigint}`;
   }
 
-  interface BunnyManifest {
-    readonly id: string;
-    readonly version: string;
-    readonly type: "plugin";
-    readonly spec: 3;
+  interface VendettaPluginManifest {
+    readonly name: string;
+    readonly description: string;
+    readonly authors: VendettaAuthor[];
     readonly main: string;
-    readonly display: {
-      readonly name: string;
-      readonly description?: string;
-      readonly authors?: BunnyAuthor[];
-    };
+    readonly hash: string;
+    readonly vendetta?: { icon?: string };
+  }
+
+  interface VendettaPluginInstance<S = unknown> {
+    onLoad?(): void;
+    onUnload?(): void;
+    settings?: React.ComponentType<unknown>;
   }
 
   // ---------------------------------------------------------------------------
@@ -145,15 +132,38 @@ declare global {
       components: any;
       [key: string]: any;
     };
-    plugin: {
-      manifest: BunnyManifest;
-      logger: BunnyLogger;
-      createStorage<T extends object = any>(): Storage<T>;
+    plugin?: {
+      manifest?: VendettaPluginManifest;
+      logger?: BunnyLogger;
+      createStorage?<T extends object = any>(): Storage<T>;
     };
     [key: string]: any;
   }
 
   const bunny: BunnyGlobal;
+
+  // ---------------------------------------------------------------------------
+  // Vendetta global injected as the first argument of the plugin function.
+  // The exact shape is wider than this, but we only type what we actually use.
+  // ---------------------------------------------------------------------------
+
+  interface VendettaGlobal {
+    plugin: {
+      id: string;
+      manifest: VendettaPluginManifest;
+      storage: any;
+    };
+    logger?: {
+      log(...a: unknown[]): void;
+      info?(...a: unknown[]): void;
+      warn?(...a: unknown[]): void;
+      error(...a: unknown[]): void;
+    };
+    patcher?: BunnyGlobal["api"]["patcher"];
+    metro?: BunnyGlobal["metro"];
+    ui?: BunnyGlobal["ui"];
+    [key: string]: any;
+  }
 }
 
 export {};

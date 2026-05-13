@@ -1,13 +1,25 @@
-// Build script for Kettu external plugins.
+// Build script for Kettu external plugins (Vendetta format).
 //
-// For each subdirectory in src/, we:
-//   1. read its manifest.json
-//   2. bundle its entry (index.tsx | index.ts | index.jsx | index.js)
-//      with esbuild as a single self-contained IIFE
-//   3. emit builds/<id>/{manifest.json,index.js}
+// Why Vendetta and not the newer Bunny "spec 3" format?
+// ----------------------------------------------------
+// Kettu's settings UI ("Add a plugin" button) talks to `VdPluginManager`, which
+// fetches `<url>/manifest.json` + `<url>/<main>` and `eval`s the JS through the
+// wrapper `vendetta => { return <JS> }`. The Bunny manifest/repo format exists
+// in the code but is NOT exposed in the UI yet. So shipping plugins as
+// "Vendetta plugins" is the path of least resistance for now.
 //
-// We also (re)generate plugins/repo.json so the file consumed by Kettu's
-// "Add custom plugin repo" feature is always in sync with what we built.
+// For each subdirectory in src/, this script:
+//   1. reads its manifest.json
+//   2. bundles its entry (index.tsx | ts | jsx | js) with esbuild in CJS mode
+//   3. wraps the CJS output in an expression that, when `eval`d by Kettu,
+//      yields the plugin instance via `module.exports.default`
+//   4. emits builds/<name>/{manifest.json,index.js} where <name> matches the
+//      slug used in the install URL (we use the source directory name, which
+//      is human-readable and stable)
+//   5. computes a SHA256 hash of the bundle and writes it back into the
+//      manifest, so Kettu cache-busts whenever the bundle changes
+//
+// A top-level plugins/repo.json index is still produced for convenience.
 
 import { build, context } from "esbuild";
 import {
@@ -19,6 +31,7 @@ import {
   rmSync,
   existsSync,
 } from "node:fs";
+import { createHash } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -26,9 +39,6 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const SRC = resolve(__dirname, "src");
 const OUT = resolve(__dirname, "builds");
 
-// ---------------------------------------------------------------------------
-// Repo metadata. Edit these once and forget about it.
-// ---------------------------------------------------------------------------
 const REPO_META = {
   name: "hello156165 - private plugins",
   description: "Personal Kettu plugin repository.",
@@ -36,107 +46,40 @@ const REPO_META = {
 
 // ---------------------------------------------------------------------------
 // esbuild plugin: rewrite imports of react / react-native / jsx-runtime so
-// the bundled code references the modules Discord already has in memory
-// (exposed by Kettu through the `bunny` global) instead of trying to ship
-// its own copy of React.
-//
-// Why this matters: Discord's React tree and our plugin MUST share the same
-// React instance, otherwise hooks (useState, useEffect, …) silently break
-// with `Cannot read properties of null (reading 'useState')`. Same goes for
-// react-native and react/jsx-runtime which is invoked by automatic JSX.
+// the bundle uses Discord's existing React/RN instance instead of shipping
+// its own copy (which would break hooks because of two React instances).
 // ---------------------------------------------------------------------------
 const BUNNY_GLOBALS = {
   react: `
     const _r = bunny.metro.common.React;
-    export default _r;
-    export const Children = _r.Children;
-    export const Component = _r.Component;
-    export const PureComponent = _r.PureComponent;
-    export const Fragment = _r.Fragment;
-    export const StrictMode = _r.StrictMode;
-    export const Suspense = _r.Suspense;
-    export const createContext = _r.createContext;
-    export const createElement = _r.createElement;
-    export const cloneElement = _r.cloneElement;
-    export const createRef = _r.createRef;
-    export const forwardRef = _r.forwardRef;
-    export const isValidElement = _r.isValidElement;
-    export const lazy = _r.lazy;
-    export const memo = _r.memo;
-    export const useCallback = _r.useCallback;
-    export const useContext = _r.useContext;
-    export const useDebugValue = _r.useDebugValue;
-    export const useEffect = _r.useEffect;
-    export const useImperativeHandle = _r.useImperativeHandle;
-    export const useLayoutEffect = _r.useLayoutEffect;
-    export const useMemo = _r.useMemo;
-    export const useReducer = _r.useReducer;
-    export const useRef = _r.useRef;
-    export const useState = _r.useState;
-    export const useId = _r.useId;
-    export const useSyncExternalStore = _r.useSyncExternalStore;
-    export const useTransition = _r.useTransition;
-    export const startTransition = _r.startTransition;
-    export const version = _r.version;
+    module.exports = _r;
+    module.exports.default = _r;
+    module.exports.__esModule = true;
   `,
   "react-native": `
     const _rn = bunny.metro.common.ReactNative;
-    export default _rn;
-    // Re-export every property as a named export so consumers can do
-    // \`import { View, Text } from "react-native"\`. Done in a side-effecting
-    // loop at module evaluation time via a Proxy-like trick.
-    export const AccessibilityInfo = _rn.AccessibilityInfo;
-    export const ActivityIndicator = _rn.ActivityIndicator;
-    export const Alert = _rn.Alert;
-    export const Animated = _rn.Animated;
-    export const AppRegistry = _rn.AppRegistry;
-    export const AppState = _rn.AppState;
-    export const Button = _rn.Button;
-    export const Clipboard = _rn.Clipboard;
-    export const DeviceEventEmitter = _rn.DeviceEventEmitter;
-    export const Dimensions = _rn.Dimensions;
-    export const Easing = _rn.Easing;
-    export const FlatList = _rn.FlatList;
-    export const Image = _rn.Image;
-    export const ImageBackground = _rn.ImageBackground;
-    export const Keyboard = _rn.Keyboard;
-    export const KeyboardAvoidingView = _rn.KeyboardAvoidingView;
-    export const LayoutAnimation = _rn.LayoutAnimation;
-    export const Linking = _rn.Linking;
-    export const Modal = _rn.Modal;
-    export const NativeEventEmitter = _rn.NativeEventEmitter;
-    export const NativeModules = _rn.NativeModules;
-    export const PanResponder = _rn.PanResponder;
-    export const Platform = _rn.Platform;
-    export const Pressable = _rn.Pressable;
-    export const RefreshControl = _rn.RefreshControl;
-    export const ScrollView = _rn.ScrollView;
-    export const SectionList = _rn.SectionList;
-    export const Share = _rn.Share;
-    export const StatusBar = _rn.StatusBar;
-    export const StyleSheet = _rn.StyleSheet;
-    export const Switch = _rn.Switch;
-    export const Text = _rn.Text;
-    export const TextInput = _rn.TextInput;
-    export const TouchableHighlight = _rn.TouchableHighlight;
-    export const TouchableOpacity = _rn.TouchableOpacity;
-    export const TouchableWithoutFeedback = _rn.TouchableWithoutFeedback;
-    export const View = _rn.View;
-    export const VirtualizedList = _rn.VirtualizedList;
-    export const findNodeHandle = _rn.findNodeHandle;
-    export const requireNativeComponent = _rn.requireNativeComponent;
-    export const UIManager = _rn.UIManager;
+    module.exports = _rn;
+    module.exports.default = _rn;
+    module.exports.__esModule = true;
   `,
   "react/jsx-runtime": `
-    const _j = bunny._jsx ?? bunny.metro.findByProps("jsx", "jsxs");
-    export const jsx = _j.jsx;
-    export const jsxs = _j.jsxs;
-    export const Fragment = _j.Fragment;
+    const _j = (typeof bunny !== "undefined" && bunny._jsx)
+      || bunny.metro.findByProps("jsx", "jsxs");
+    module.exports = {
+      jsx: _j.jsx,
+      jsxs: _j.jsxs,
+      Fragment: _j.Fragment,
+      __esModule: true,
+    };
   `,
   "react/jsx-dev-runtime": `
-    const _j = bunny._jsx ?? bunny.metro.findByProps("jsxDEV", "jsx", "jsxs");
-    export const jsxDEV = _j.jsxDEV ?? _j.jsx;
-    export const Fragment = _j.Fragment;
+    const _j = (typeof bunny !== "undefined" && bunny._jsx)
+      || bunny.metro.findByProps("jsxDEV", "jsx", "jsxs");
+    module.exports = {
+      jsxDEV: _j.jsxDEV || _j.jsx,
+      Fragment: _j.Fragment,
+      __esModule: true,
+    };
   `,
 };
 
@@ -162,7 +105,7 @@ function bunnyGlobalsPlugin() {
 }
 
 // ---------------------------------------------------------------------------
-// Plugin discovery
+// Helpers
 // ---------------------------------------------------------------------------
 function listPluginDirs() {
   if (!existsSync(SRC)) return [];
@@ -186,19 +129,12 @@ function resolveEntry(pluginDir) {
   );
 }
 
-function makeBuildOptions(pluginId, srcDir, outDir) {
+function makeBuildOptions(pluginId, srcDir) {
   return {
     entryPoints: [resolveEntry(srcDir)],
-    outfile: join(outDir, "index.js"),
     bundle: true,
-    // The Kettu loader wraps our bundle in
-    //   (bunny, definePlugin) => { <bundle>; return plugin?.default ?? plugin; }
-    // It therefore expects a top-level `plugin` to exist when the bundle
-    // finishes. esbuild's globalName + iife format does exactly that, but the
-    // IIFE captures `bunny` and `definePlugin` from the outer scope, so we
-    // pass them in explicitly to keep esbuild from declaring shadowing vars.
-    format: "iife",
-    globalName: "plugin",
+    write: false, // we wrap and write the output ourselves
+    format: "cjs",
     platform: "neutral",
     target: ["es2022"],
     jsx: "automatic",
@@ -211,10 +147,36 @@ function makeBuildOptions(pluginId, srcDir, outDir) {
     },
     plugins: [bunnyGlobalsPlugin()],
     logLevel: "info",
-    banner: {
-      js: `// Kettu plugin bundle for ${pluginId}\n// Built ${new Date().toISOString()}\n`,
-    },
   };
+}
+
+/**
+ * Wrap the raw CJS output of esbuild into a single JavaScript expression that
+ * Kettu's plugin loader can evaluate directly.
+ *
+ * Kettu wraps `plugin.js` in `vendetta => { return ${plugin.js} }`, so we MUST
+ * produce an expression here — not a statement. We do that with an IIFE that
+ * provides `module` and `exports` locals, runs the CJS body, then returns
+ * `module.exports.default ?? module.exports`.
+ */
+function wrapAsExpression(cjsCode, pluginId) {
+  // Strip the leading `"use strict";` directive — it's harmless but useless
+  // here, and keeping it would put a *statement* before our expression on
+  // some platforms (we want a clean expression).
+  const stripped = cjsCode.replace(/^\s*["']use strict["'];?\s*/, "");
+
+  return [
+    `/* Larp plugin bundle for ${pluginId} (Vendetta format).`,
+    `   Built ${new Date().toISOString()}.`,
+    `   Loaded by Kettu via VdPluginManager.evalPlugin. */`,
+    `(function(){`,
+    `  "use strict";`,
+    `  var module = { exports: {} };`,
+    `  var exports = module.exports;`,
+    stripped,
+    `  return module.exports.default != null ? module.exports.default : module.exports;`,
+    `})()`,
+  ].join("\n");
 }
 
 // ---------------------------------------------------------------------------
@@ -225,45 +187,70 @@ async function buildAll({ watch }) {
   mkdirSync(OUT, { recursive: true });
 
   const repo = { $meta: REPO_META };
-  const plugins = listPluginDirs();
+  const pluginDirs = listPluginDirs();
 
-  if (plugins.length === 0) {
+  if (pluginDirs.length === 0) {
     console.warn(`No plugins found in ${SRC}`);
   }
 
-  for (const dirName of plugins) {
+  for (const dirName of pluginDirs) {
     const pluginSrc = join(SRC, dirName);
-    const manifest = JSON.parse(
-      readFileSync(join(pluginSrc, "manifest.json"), "utf8")
-    );
-    const outDir = join(OUT, manifest.id);
+    const manifestRaw = readFileSync(join(pluginSrc, "manifest.json"), "utf8");
+    const manifest = JSON.parse(manifestRaw);
+
+    // Use the source directory name as the URL slug. Stable, predictable.
+    const slug = dirName;
+    const outDir = join(OUT, slug);
     mkdirSync(outDir, { recursive: true });
 
-    console.log(`\n— Building ${manifest.id} v${manifest.version}`);
+    console.log(`\n— Building ${manifest.name} (${slug})`);
 
-    const opts = makeBuildOptions(manifest.id, pluginSrc, outDir);
+    const opts = makeBuildOptions(slug, pluginSrc);
 
+    let bundleText;
     if (watch) {
-      const ctx = await context(opts);
+      const ctx = await context({
+        ...opts,
+        write: false,
+      });
+      const result = await ctx.rebuild();
+      bundleText = result.outputFiles[0].text;
       await ctx.watch();
       console.log(`  watching ${pluginSrc}`);
     } else {
-      await build(opts);
+      const result = await build(opts);
+      bundleText = result.outputFiles[0].text;
     }
 
+    const wrapped = wrapAsExpression(bundleText, slug);
+    writeFileSync(join(outDir, "index.js"), wrapped);
+
+    // Hash drives Kettu's "is the cached copy still current?" check. Compute
+    // it AFTER wrapping so any change to the wrapper also invalidates caches.
+    const hash = createHash("sha256")
+      .update(wrapped)
+      .digest("hex")
+      .slice(0, 16);
+
+    const finalManifest = { ...manifest, hash };
     writeFileSync(
       join(outDir, "manifest.json"),
-      JSON.stringify(manifest, null, 2)
+      JSON.stringify(finalManifest, null, 2)
     );
-    repo[manifest.id] = { version: manifest.version, alwaysFetch: true };
+
+    repo[slug] = {
+      name: manifest.name,
+      description: manifest.description,
+      hash,
+    };
+
+    console.log(
+      `  → builds/${slug}/index.js (${(wrapped.length / 1024).toFixed(1)} kB, hash ${hash})`
+    );
   }
 
   writeFileSync(join(OUT, "repo.json"), JSON.stringify(repo, null, 2));
-  // Convenience copy at plugins/repo.json so it can be served as
-  //   /plugins/repo.json   (top-level)
-  // or
-  //   /plugins/builds/repo.json
-  // depending on where you host from.
+  // Top-level convenience copy so `<repo>/dist/plugins/repo.json` works.
   writeFileSync(
     resolve(__dirname, "repo.json"),
     JSON.stringify(repo, null, 2)

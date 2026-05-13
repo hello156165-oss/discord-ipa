@@ -6,65 +6,105 @@ import { patchCurrentUser } from "./patches/user";
 import LarpSettings from "./settings";
 import { applyDefaults, type LarpStorage } from "./storage";
 
-// Storage is created at module evaluation time because Kettu's loader expects
-// a synchronously-defined plugin. The proxy returned here will be lazily
-// hydrated by Kettu before `start()` is called.
-const storage = bunny.plugin.createStorage<LarpStorage>();
+/**
+ * Vendetta plugin entry.
+ *
+ * Kettu evaluates this file with the wrapper
+ *   `vendetta => { return <THIS FILE> }`
+ * and then calls the resulting arrow with a freshly built `vendetta` object,
+ * so `vendetta` is in scope here even though we never reference it directly.
+ *
+ * The build pipeline (plugins/build.mjs) ensures the final JS is a single
+ * expression that yields the plugin instance via `module.exports.default`.
+ *
+ * We use `window.bunny` (which Kettu exposes globally) for the patcher,
+ * metro lookups and the settings section registration: those APIs are richer
+ * and identical to what built-in core plugins use. The only thing we pull
+ * from `vendetta` is the per-plugin scoped storage, since `window.bunny.plugin`
+ * is not populated for Vendetta-format plugins.
+ */
 
-// Cleanup handles assigned in `start` and released in `stop`.
+declare const vendetta: {
+  plugin: {
+    storage: LarpStorage & Record<string, unknown>;
+  };
+  logger?: { log: (...a: unknown[]) => void; error: (...a: unknown[]) => void };
+};
+
+// Cleanup handles assigned in `onLoad` and released in `onUnload`.
 let unpatches: Array<() => void> = [];
 let unregisterSettingsSection: (() => void) | null = null;
 
 function SettingsHost(): JSX.Element {
-  return <LarpSettings storage={storage} />;
+  return <LarpSettings storage={vendetta.plugin.storage as LarpStorage} />;
 }
 
-export default definePlugin({
+const log = (...args: unknown[]) => {
+  if (vendetta?.logger?.log) vendetta.logger.log(...args);
+  else console.log("[Larp]", ...args);
+};
+const logError = (...args: unknown[]) => {
+  if (vendetta?.logger?.error) vendetta.logger.error(...args);
+  else console.error("[Larp]", ...args);
+};
+
+export default {
   /**
-   * Called by Kettu when the user enables the plugin. We:
+   * Called by Kettu after the plugin's JS has been evaluated and the storage
+   * object has been hydrated. We:
    *   1. seed missing defaults on the storage proxy,
    *   2. install our patches (user, badges, creation date),
    *   3. register a dedicated section in the Discord settings menu.
    */
-  start() {
+  onLoad() {
+    const storage = vendetta.plugin.storage as LarpStorage;
     applyDefaults(storage);
+    log("starting");
 
-    bunny.plugin.logger.info("[Larp] starting");
+    try {
+      unpatches.push(patchCurrentUser(storage));
+      unpatches.push(patchBadges(storage));
+      unpatches.push(patchCreationDate(storage));
+    } catch (err) {
+      logError("failed to install one of the patches", err);
+    }
 
-    unpatches.push(patchCurrentUser(storage));
-    unpatches.push(patchBadges(storage));
-    unpatches.push(patchCreationDate(storage));
+    try {
+      unregisterSettingsSection = bunny.ui.settings.registerSection({
+        name: "Larp",
+        items: [
+          {
+            key: "LARP_TAB",
+            title: () => "Larp",
+            icon: bunny.api.assets.findAssetId("MaskIcon")
+              ? undefined
+              : undefined,
+            render: () =>
+              Promise.resolve({
+                default: SettingsHost as React.ComponentType,
+              }),
+          },
+        ],
+      });
+    } catch (err) {
+      logError("failed to register settings section", err);
+    }
 
-    unregisterSettingsSection = bunny.ui.settings.registerSection({
-      name: "Larp",
-      items: [
-        {
-          key: "LARP_TAB",
-          title: () => "Larp",
-          icon: bunny.api.assets.findAssetId("MaskIcon")
-            ? { uri: "" } // placeholder; real source picked by Kettu via key
-            : undefined,
-          render: () =>
-            Promise.resolve({ default: SettingsHost as React.ComponentType }),
-        },
-      ],
-    });
-
-    bunny.plugin.logger.info("[Larp] ready");
+    log("ready");
   },
 
   /**
    * Called by Kettu when the user disables the plugin or hot-reloads it.
-   * We tear down patches FIRST so that any UI re-render that happens during
+   * Tear patches down FIRST so that any UI re-render that happens during
    * the section unregister sees the original Discord behavior again.
    */
-  stop() {
-    bunny.plugin.logger.info("[Larp] stopping");
+  onUnload() {
+    log("stopping");
     for (const u of unpatches) {
       try {
         u();
       } catch (err) {
-        bunny.plugin.logger.error("[Larp] unpatch threw", err);
+        logError("unpatch threw", err);
       }
     }
     unpatches = [];
@@ -73,15 +113,16 @@ export default definePlugin({
       try {
         unregisterSettingsSection();
       } catch (err) {
-        bunny.plugin.logger.error("[Larp] unregisterSection threw", err);
+        logError("unregisterSection threw", err);
       }
       unregisterSettingsSection = null;
     }
   },
 
   /**
-   * Surfaced as the plugin's settings sheet (accessible from the plugin
-   * list in Kettu) — same component as the dedicated tab.
+   * Vendetta surfaces this as the plugin's "Settings" sheet, accessible
+   * from the plugin's row in the Plugins list. Same component as the
+   * dedicated tab we register in `onLoad`.
    */
-  SettingsComponent: SettingsHost,
-});
+  settings: SettingsHost,
+};

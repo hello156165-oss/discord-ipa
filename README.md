@@ -187,14 +187,21 @@ Tous les overrides sont 100 % locaux — rien n'est envoyé à Discord.
 
 ### Utiliser les plugins dans Kettu sur iPhone
 
-> ⚠ Le repo doit être **public** pour que `raw.githubusercontent.com` réponde sans token. Soit :
->   - Rends le repo public (Settings → General → Change visibility)
->   - **OU** active GitHub Pages sur la branche `dist` et utilise l'URL `https://<user>.github.io/<repo>/plugins/repo.json`
+> ⚠ Le repo doit être **public** pour que `raw.githubusercontent.com` réponde sans token.
 
-1. Dans Discord moddé → Paramètres → **Plugins** → bouton **+** (ajouter un repo)
-2. Colle : `https://raw.githubusercontent.com/hello156165-oss/discord-ipa/dist/plugins/repo.json`
-3. Le plugin "Larp" apparaît dans la liste → installer → activer
-4. Un nouvel onglet **"Larp"** apparaît dans les paramètres Discord → configure tes overrides
+L'UI Kettu actuelle utilise le format **Vendetta** (URL d'un dossier de plugin avec `manifest.json` + `index.js`), pas le format Bunny avec `repo.json`. **On installe les plugins un par un**, à partir de leur URL dossier.
+
+1. Dans Discord moddé → Paramètres → **Plugins** → bouton **+** (Install a plugin)
+2. Pour le plugin **Larp**, colle cette URL :
+   ```
+   https://raw.githubusercontent.com/hello156165-oss/discord-ipa/dist/plugins/builds/larp/
+   ```
+   > Le `/` final n'est pas indispensable, Kettu l'ajoute tout seul.
+3. Confirme l'avertissement "Hold on" (plugins non-proxifiés)
+4. Toggle le plugin Larp en ON
+5. Un nouvel onglet **"Larp"** apparaît dans les paramètres Discord → configure tes overrides
+
+> Le `repo.json` à la racine de `dist/plugins/` est gardé pour référence/futur — Kettu ne l'utilise pas pour le moment.
 
 ---
 
