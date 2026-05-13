@@ -1,7 +1,7 @@
 {
   "name": "Larp",
-  "description": "[v9.5] Nitro tiers: replace real Nitro if you have it; Emerald/Ruby/Opal SVG + asset aliases.",
-  "authors": [{ "name": "hello156165 (v9.5)" }],
+  "description": "[v9.6] Nitro tiers PNG (Emerald/Ruby/Opal); Boost 12/24 replace; hide Quest/Orb; spoof @ only.",
+  "authors": [{ "name": "hello156165 (v9.6)" }],
   "main": "index.js",
   "hash": "REPLACED_AT_BUILD_TIME",
   "vendetta": {

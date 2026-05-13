@@ -12,6 +12,9 @@
 (function () {
   "use strict";
 
+  /** Bump with releases — visible in toast so you know the phone loaded this build (not an old CDN file). */
+  var LARP_UI_TAG = "v9.6";
+
   // ---------------------------------------------------------------------
   // Resolve runtime APIs from `vendetta` (the arrow parameter Kettu
   // guarantees is populated before our code runs).
@@ -38,6 +41,13 @@
   if (typeof storage.badges !== "object" || storage.badges === null) {
     storage.badges = {};
   }
+  if (typeof storage.hideNative !== "object" || storage.hideNative === null) {
+    storage.hideNative = {};
+  }
+  if (storage.hideNative.quest == null) storage.hideNative.quest = false;
+  if (storage.hideNative.orb == null) storage.hideNative.orb = false;
+  if (storage.hideNative.legacyUsername == null) storage.hideNative.legacyUsername = false;
+  if (storage.hideNative.idSubstrings == null) storage.hideNative.idSubstrings = "";
 
   // ---------------------------------------------------------------------
   // All official Discord badges. id is internal, label is the human name,
@@ -45,10 +55,10 @@
   // fallback if the local asset can't be found.
   // ---------------------------------------------------------------------
   var CDN = "https://cdn.discordapp.com/badge-icons";
-  /** Official Discord SVGs for evolved Nitro tiers (mezotv/discord-badges README). */
-  var SVG_EMERALD = "https://discord.com/assets/f2b9b02fb22cc6459922.svg";
-  var SVG_RUBY = "https://discord.com/assets/ecf86e18838013c9d95a.svg";
-  var SVG_OPAL = "https://discord.com/assets/b4fc7a9c37ec2fae36e3.svg";
+  /** PNG hashes from Discord profile badge table (XYZenix gist) — RN often skips remote SVG. */
+  var ICON_EMERALD = "11e2d339068b55d3a506cff34d3780f3";
+  var ICON_RUBY = "cd5e2cfd9d7f27a8cdcd3e8a8d5dc9f4";
+  var ICON_OPAL = "5b154df19c53dce2af92c9b61e6be5e2";
 
   var BADGES = [
     { id: "staff",                   label: "Discord Staff",            asset: "StaffBadge",                       url: CDN + "/5e74e9b61934fc1f67c65515d1f7e60d.png" },
@@ -78,19 +88,41 @@
       id: "premium_tenure_emerald",
       label: "Nitro · Emerald (36 mo)",
       assetCandidates: ["NitroEmeraldBadge", "NitroEmerald", "EmeraldNitroBadge", "premium_tenure_36_month_v2"],
-      url: SVG_EMERALD
+      url: CDN + "/" + ICON_EMERALD + ".png"
     },
     {
       id: "premium_tenure_ruby",
       label: "Nitro · Ruby (60 mo)",
       assetCandidates: ["NitroRubyBadge", "NitroRuby", "RubyNitroBadge", "premium_tenure_60_month_v2"],
-      url: SVG_RUBY
+      url: CDN + "/" + ICON_RUBY + ".png"
     },
     {
       id: "premium_tenure_opal",
       label: "Nitro · Opal (72+ mo)",
       assetCandidates: ["NitroOpalBadge", "NitroOpal", "NitroFireBadge", "FireNitroBadge", "premium_tenure_72_month_v2"],
-      url: SVG_OPAL
+      url: CDN + "/" + ICON_OPAL + ".png"
+    },
+    {
+      id: "guild_boost_12",
+      label: "Nitro Boost · ~12 mo (icône)",
+      assetCandidates: [
+        "GuildBoosterLevel6Badge",
+        "GuildBoosterBadgeTier6",
+        "PremiumGuildSubscriberBadgeTier6",
+        "guild_booster_lvl6"
+      ],
+      url: CDN + "/991c9f39ee33d7537d9f408c3e53141e.png"
+    },
+    {
+      id: "guild_boost_24",
+      label: "Nitro Boost · ~24 mo (icône)",
+      assetCandidates: [
+        "GuildBoosterLevel9Badge",
+        "GuildBoosterBadgeTier9",
+        "PremiumGuildSubscriberBadgeTier9",
+        "guild_booster_lvl9"
+      ],
+      url: CDN + "/ec92202290b48d0879b7413d2dde3bab.png"
     },
     { id: "bot_commands",            label: "Supports Commands",        asset: "BotCommandsBadge",                 url: CDN + "/6f9e37f9029ff57aef81db857890005e.png" },
     { id: "automod",                 label: "Uses AutoMod",             asset: "AutoModBadge",                     url: CDN + "/f2459b691ac7453ed6039bbcfaccbfcd.png" },
@@ -113,6 +145,13 @@
   var NITRO_LARP_SET = {};
   for (var _ni = 0; _ni < NITRO_LARP_ORDER.length; _ni++) {
     NITRO_LARP_SET[NITRO_LARP_ORDER[_ni]] = true;
+  }
+
+  /** Same pattern as Nitro: one fake boost badge at a time (higher months win). */
+  var BOOST_LARP_ORDER = ["guild_boost_24", "guild_boost_12"];
+  var BOOST_LARP_SET = {};
+  for (var _bi0 = 0; _bi0 < BOOST_LARP_ORDER.length; _bi0++) {
+    BOOST_LARP_SET[BOOST_LARP_ORDER[_bi0]] = true;
   }
 
   /** CDN + label for each synthetic badge id (used by JSX hook below). */
@@ -174,6 +213,60 @@
       if (bm[tid]) return tid;
     }
     return null;
+  }
+
+  function getEnabledBoostLarpId() {
+    var bm = getBadgesMap();
+    for (var _bj = 0; _bj < BOOST_LARP_ORDER.length; _bj++) {
+      var bid = BOOST_LARP_ORDER[_bj];
+      if (bm[bid]) return bid;
+    }
+    return null;
+  }
+
+  function nativeBoostCount(arr) {
+    var c = 0;
+    for (var _bk = 0; _bk < arr.length; _bk++) {
+      if (isGuildBoostBadge(arr[_bk])) c++;
+    }
+    return c;
+  }
+
+  /** Hide ugly / unwanted real badges on your own profile (client-only). */
+  function shouldHideNativeBadge(b) {
+    if (!b) return false;
+    if (String(b.id || "").indexOf("larp-") === 0) return false;
+    var h = storage.hideNative || {};
+    var id = String(b.id || "").toLowerCase();
+    var desc = String(b.description || b.tooltip || "").toLowerCase();
+    if (h.quest && (id.indexOf("quest") !== -1 || desc.indexOf("quest") !== -1)) {
+      return true;
+    }
+    if (
+      h.orb &&
+      (id.indexOf("orb") !== -1 ||
+        desc.indexOf("orb profile") !== -1 ||
+        desc.indexOf("collected the orb") !== -1)
+    ) {
+      return true;
+    }
+    if (
+      h.legacyUsername &&
+      (id.indexOf("legacy_username") !== -1 ||
+        id.indexOf("originally_known") !== -1 ||
+        desc.indexOf("originally known") !== -1)
+    ) {
+      return true;
+    }
+    var raw = String(h.idSubstrings || "").trim().toLowerCase();
+    if (raw) {
+      var parts = raw.split(/[\s,;]+/);
+      for (var _hp = 0; _hp < parts.length; _hp++) {
+        var frag = parts[_hp];
+        if (frag && id.indexOf(frag) !== -1) return true;
+      }
+    }
+    return false;
   }
 
   function isGuildBoostBadge(b) {
@@ -243,8 +336,7 @@
     var replace = (storage.replaceUsername || "").trim();
     if (!match || !replace) return false;
     var un = normName(user.username || "");
-    var gn = normName(user.globalName || user.global_name || "");
-    return un === match || gn === match;
+    return un === match;
   }
 
   function buildUserProxy(user) {
@@ -254,18 +346,9 @@
     var proxy = new Proxy(user, {
       get: function (t, p, recv) {
         if (!shouldSpoofUser(t)) return Reflect.get(t, p, recv);
-        var match = normName(storage.matchUsername || "");
         var replace = (storage.replaceUsername || "").trim();
-        var un = normName(t.username || "");
-        var gn = normName(t.globalName || t.global_name || "");
 
         if (p === "username") return replace;
-
-        if (p === "globalName" || p === "global_name") {
-          var orig = Reflect.get(t, p, recv);
-          if (gn === match || un === match) return replace;
-          return orig;
-        }
 
         // "user#0" style tag shown under display name on mobile
         if (p === "tag") {
@@ -290,18 +373,6 @@
             enumerable: true,
             value: replace
           };
-        }
-        if (p === "globalName" || p === "global_name") {
-          var gn = normName(t.globalName || t.global_name || "");
-          var un = normName(t.username || "");
-          var match = normName(storage.matchUsername || "");
-          if (gn === match || un === match) {
-            return {
-              configurable: true,
-              enumerable: true,
-              value: replace
-            };
-          }
         }
         return Reflect.getOwnPropertyDescriptor(t, p);
       }
@@ -382,22 +453,35 @@
         });
 
         var nitroPick = getEnabledNitroLarpId();
+        var boostPick = getEnabledBoostLarpId();
         var hasRealNitro = nativeNitroCount(base) > 0;
+        var hasRealBoost = nativeBoostCount(base) > 0;
         var stripNativeNitro = nitroPick != null && hasRealNitro;
-        var base2 = stripNativeNitro
-          ? base.filter(function (x) {
-              return !isNativeNitroLike(x);
-            })
-          : base;
+        var stripNativeBoost = boostPick != null && hasRealBoost;
+        var base2 = base;
+        if (stripNativeNitro) {
+          base2 = base2.filter(function (x) {
+            return !isNativeNitroLike(x);
+          });
+        }
+        if (stripNativeBoost) {
+          base2 = base2.filter(function (x) {
+            return !isGuildBoostBadge(x);
+          });
+        }
+        var base3 = base2.filter(function (x) {
+          return !shouldHideNativeBadge(x);
+        });
 
         var additions = [];
         for (var i = 0; i < BADGES.length; i++) {
           var b = BADGES[i];
           if (!badgesMap[b.id]) continue;
           if (NITRO_LARP_SET[b.id] && b.id !== nitroPick) continue;
+          if (BOOST_LARP_SET[b.id] && b.id !== boostPick) continue;
           additions.push(makeBadgePayload(b));
         }
-        return base2.concat(additions);
+        return base3.concat(additions);
       }
 
       unpatches.push(after(hookKey, mod, badgeHandler));
@@ -522,6 +606,33 @@
       );
     }
 
+    function hideToggle(key, label) {
+      var on = !!storage.hideNative[key];
+      return React.createElement(Pressable, {
+        key: key,
+        onPress: function () {
+          storage.hideNative[key] = !on;
+          refresh();
+        },
+        style: {
+          flexDirection: "row",
+          alignItems: "center",
+          paddingHorizontal: 14,
+          paddingVertical: 12,
+          backgroundColor: on ? "#404652" : "#2b2d31",
+          borderRadius: 8,
+          marginBottom: 6
+        }
+      },
+        React.createElement(Text, {
+          style: { color: on ? "#ed4245" : "#80848e", fontSize: 18, marginRight: 12 }
+        }, on ? "☑" : "☐"),
+        React.createElement(Text, {
+          style: { color: "#ffffff", fontSize: 15, flex: 1 }
+        }, label)
+      );
+    }
+
     return React.createElement(ScrollView, {
       style: { flex: 1, backgroundColor: "#313338" },
       contentContainerStyle: { padding: 16, paddingBottom: 64 }
@@ -534,10 +645,10 @@
       }, "100% local. Personne d'autre ne voit ces changements."),
       React.createElement(Text, {
         style: { color: "#949ba4", fontSize: 12, marginBottom: 12 }
-      }, "Pseudo : ton vrai username Discord (sans @), la comparaison ignore majuscules/minuscules."),
+      }, "Pseudo : uniquement le handle @ (username), pas le display name. Comparaison sans @, insensible à la casse."),
 
-      field("User to replace", matchValue, "matchUsername"),
-      field("Replacement", replaceValue, "replaceUsername"),
+      field("User to replace (username)", matchValue, "matchUsername"),
+      field("Replacement @handle", replaceValue, "replaceUsername"),
 
       React.createElement(Text, {
         style: {
@@ -550,9 +661,51 @@
       }, "Badges (tap to toggle)"),
       React.createElement(Text, {
         style: { color: "#949ba4", fontSize: 11, marginBottom: 8, lineHeight: 15 }
-      }, "Nitro / paliers : si tu as déjà un vrai badge Nitro sur ton compte, Larp le retire et affiche celui que tu coches (un seul à la fois = le plus haut dans la liste). Si tu n'as pas Nitro, le badge choisi s'ajoute."),
+      }, "Nitro / paliers : si tu as déjà un vrai badge Nitro, Larp le retire et affiche celui coché (un seul = le plus haut dans la liste). Idem pour Nitro Boost 12 / 24 mois si tu boostes déjà."),
 
       BADGES.map(badgeRow),
+
+      React.createElement(Text, {
+        style: {
+          color: "#dbdee1",
+          fontSize: 14,
+          fontWeight: "600",
+          marginTop: 16,
+          marginBottom: 6
+        }
+      }, "Masquer des badges (profil local)"),
+      React.createElement(Text, {
+        style: { color: "#949ba4", fontSize: 11, marginBottom: 8, lineHeight: 15 }
+      }, "Retire des badges Discord réels sur ta vue seulement (ex. Quest, feuille Orb). Les ids partiels s’appliquent au champ id du badge."),
+
+      hideToggle("quest", "Masquer badge Quest"),
+      hideToggle("orb", "Masquer badge Orb (feuille)"),
+      hideToggle("legacyUsername", "Masquer « Originally known as »"),
+
+      React.createElement(View, { style: { marginBottom: 12 } },
+        React.createElement(Text, {
+          style: { color: "#dbdee1", fontSize: 14, fontWeight: "600", marginBottom: 6 }
+        }, "Masquer si l’id contient (séparés par espace ou virgule)"),
+        React.createElement(TextInput, {
+          style: {
+            backgroundColor: "#1e1f22",
+            color: "#ffffff",
+            borderRadius: 8,
+            paddingHorizontal: 12,
+            paddingVertical: 10,
+            fontSize: 15
+          },
+          placeholder: "ex. april_fools orbs",
+          placeholderTextColor: "#80848e",
+          value: storage.hideNative.idSubstrings || "",
+          autoCorrect: false,
+          autoCapitalize: "none",
+          onChangeText: function (v) {
+            storage.hideNative.idSubstrings = v;
+            refresh();
+          }
+        })
+      ),
 
       React.createElement(Pressable, {
         onPress: function () {
@@ -580,7 +733,9 @@
   // ---------------------------------------------------------------------
   return {
     onLoad: function () {
-      try { showToast("Larp loaded", getAssetIDByName("Check")); } catch (_) {}
+      try {
+        showToast("[Larp] " + LARP_UI_TAG + " actif", getAssetIDByName("Check"));
+      } catch (_) {}
       patchUsername();
       patchBadges();
       patchBadgeIconsViaJsx();
