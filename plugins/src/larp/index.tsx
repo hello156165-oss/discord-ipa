@@ -19,7 +19,7 @@ import { applyDefaults, type LarpStorage } from "./storage";
  * really being evaluated and that `onLoad` runs to completion.
  */
 
-const LARP_VERSION = "v7-marker";
+const LARP_VERSION = "v8-asset+alert";
 
 declare const vendetta: {
   plugin?: {
@@ -143,11 +143,14 @@ function SettingsHost(): JSX.Element {
 
 const pluginDefault = {
   onLoad() {
-    diag.onLoadStartedAt = Date.now();
-    toast("module evaluated, onLoad running");
-    log("starting", LARP_VERSION);
-
+    // Wrap EVERYTHING so even diag/log/toast crashing cannot bubble up
+    // and trigger Kettu's startPlugin catch (which would set the toggle
+    // back to OFF).
     try {
+      try { diag.onLoadStartedAt = Date.now(); } catch (_) {}
+      toast("module evaluated, onLoad running");
+      log("starting", LARP_VERSION);
+
       const storage = vendetta?.plugin?.storage as LarpStorage | undefined;
       if (storage) applyDefaults(storage);
 

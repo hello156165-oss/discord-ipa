@@ -243,15 +243,32 @@ function wrapAsExpression(cjsCode, pluginId) {
     `\n  "use strict";` +
     `\n  var module = { exports: {} };` +
     `\n  var exports = module.exports;` +
+    `\n  function __larpAssetId(){` +
+    `\n    try {` +
+    `\n      var g = (typeof vendetta !== "undefined" && vendetta && vendetta.ui && vendetta.ui.assets && vendetta.ui.assets.getAssetIDByName)` +
+    `\n           || (typeof bunny !== "undefined" && bunny && bunny.api && bunny.api.assets && (bunny.api.assets.getAssetIDByName || bunny.api.assets.findAssetId));` +
+    `\n      if (g) return g("Check");` +
+    `\n    } catch(__){}` +
+    `\n    return undefined;` +
+    `\n  }` +
+    `\n  function __larpAlert(msg){` +
+    `\n    try {` +
+    `\n      var a = (typeof vendetta !== "undefined" && vendetta && vendetta.ui && vendetta.ui.alerts && vendetta.ui.alerts.showConfirmationAlert);` +
+    `\n      if (a) a({ title: "Larp diagnostic", content: msg, confirmText: "OK" });` +
+    `\n    } catch(__){}` +
+    `\n  }` +
     `\n  function __larpShow(msg){` +
     `\n    try {` +
     `\n      var f = (typeof vendetta !== "undefined" && vendetta && vendetta.ui && vendetta.ui.toasts && vendetta.ui.toasts.showToast)` +
     `\n           || (typeof bunny !== "undefined" && bunny && bunny.ui && bunny.ui.toasts && bunny.ui.toasts.showToast);` +
-    `\n      if (f) f(msg);` +
+    `\n      var aid;` +
+    `\n      try { aid = __larpAssetId(); } catch(__){}` +
+    `\n      if (f) { try { f(msg, aid); } catch(__) { try { f(msg); } catch(___) {} } }` +
     `\n      else if (typeof console !== "undefined") console.log(msg);` +
     `\n    } catch(__){}` +
     `\n  }` +
     `\n  try { (globalThis||{}).__LARP_BUNDLE_ENTERED__ = Date.now(); } catch(__){}` +
+    `\n  try { (globalThis||{}).__LARP_BUNDLE_VERSION__ = ${JSON.stringify(`v7+${new Date().toISOString()}`)}; } catch(__){}` +
     `\n  __larpShow("[Larp] bundle entered");` +
     `\n  try {` +
     `\n${stripped}` +
@@ -259,6 +276,7 @@ function wrapAsExpression(cjsCode, pluginId) {
     `\n    try { (globalThis||{}).__LARP_BUNDLE_ERROR__ = __larpBundleError; } catch(__){}` +
     `\n    var __msg = "[Larp BUNDLE THREW] " + ((__larpBundleError && __larpBundleError.message) || String(__larpBundleError));` +
     `\n    __larpShow(__msg);` +
+    `\n    __larpAlert(__msg + "\\n\\nStack:\\n" + ((__larpBundleError && __larpBundleError.stack) || "(no stack)"));` +
     `\n    if (typeof console !== "undefined") console.error("[Larp] bundle threw:", __larpBundleError);` +
     `\n    module.exports = { default: {` +
     `\n      onLoad: function(){ __larpShow("[Larp] onLoad noop — bundle had thrown"); },` +

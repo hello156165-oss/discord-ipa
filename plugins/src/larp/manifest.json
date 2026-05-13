@@ -1,7 +1,7 @@
 {
   "name": "Larp",
-  "description": "[BUILD v7-marker] Modify your local Discord appearance: custom username, badges and account creation date. Everything is local and visible only to you.",
-  "authors": [{ "name": "hello156165 (v7-marker)" }],
+  "description": "[BUILD v8-asset+alert] Modify your local Discord appearance: custom username, badges and account creation date. Everything is local and visible only to you.",
+  "authors": [{ "name": "hello156165 (v8)" }],
   "main": "index.js",
   "hash": "REPLACED_AT_BUILD_TIME",
   "vendetta": {
