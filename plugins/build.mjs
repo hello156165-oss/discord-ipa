@@ -165,18 +165,28 @@ function wrapAsExpression(cjsCode, pluginId) {
   // some platforms (we want a clean expression).
   const stripped = cjsCode.replace(/^\s*["']use strict["'];?\s*/, "");
 
-  return [
-    `/* Larp plugin bundle for ${pluginId} (Vendetta format).`,
-    `   Built ${new Date().toISOString()}.`,
-    `   Loaded by Kettu via VdPluginManager.evalPlugin. */`,
-    `(function(){`,
-    `  "use strict";`,
-    `  var module = { exports: {} };`,
-    `  var exports = module.exports;`,
-    stripped,
-    `  return module.exports.default != null ? module.exports.default : module.exports;`,
-    `})()`,
-  ].join("\n");
+  // CRITICAL: the very first character of our output must be `(` so that when
+  // Kettu wraps us as `vendetta => { return ${plugin.js} }`, the parser
+  // recognises the body as an expression and DOES NOT perform automatic
+  // semicolon insertion after `return`. A leading comment OR a leading
+  // newline between `return` and the IIFE would turn this into
+  // `return;\n(IIFE);` — i.e. the arrow returns `undefined` and the IIFE
+  // runs but its result is discarded. We learned this the hard way.
+  //
+  // We move the build-info comment INSIDE the IIFE so the public file still
+  // contains attribution, but it cannot disrupt parsing.
+  return (
+    `(function(){` +
+    `\n  /* Larp plugin bundle for ${pluginId} (Vendetta format).` +
+    `\n     Built ${new Date().toISOString()}.` +
+    `\n     Loaded by Kettu via VdPluginManager.evalPlugin. */` +
+    `\n  "use strict";` +
+    `\n  var module = { exports: {} };` +
+    `\n  var exports = module.exports;` +
+    `\n${stripped}` +
+    `\n  return module.exports.default != null ? module.exports.default : module.exports;` +
+    `\n})()`
+  );
 }
 
 // ---------------------------------------------------------------------------
