@@ -13,7 +13,7 @@
   "use strict";
 
   /** Bump with releases — visible in toast so you know the phone loaded this build (not an old CDN file). */
-  var LARP_UI_TAG = "v9.9";
+  var LARP_UI_TAG = "v10.0";
 
   // ---------------------------------------------------------------------
   // Resolve runtime APIs from `vendetta` (the arrow parameter Kettu
@@ -48,8 +48,7 @@
   if (storage.hideNative.orb == null) storage.hideNative.orb = false;
   if (storage.hideNative.legacyUsername == null) storage.hideNative.legacyUsername = false;
   if (storage.hideNative.levelLeaf == null) storage.hideNative.levelLeaf = false;
-
-  // ---------------------------------------------------------------------
+  if (storage.hideNative.idSubstrings == null) storage.hideNative.idSubstrings = "";
   // All official Discord badges. id is internal, label is the human name,
   // assetName is the Discord asset registered in the app, cdnUrl is a
   // fallback if the local asset can't be found.
@@ -638,6 +637,174 @@
     }
   }
 
+  /** Action sheet key — must match hideActionSheet argument. */
+  var NITRO_MILESTONES_SHEET_KEY = "LarpNitroMilestones";
+
+  /** Official v2 tenure badge PNG hashes (XYZenix gist) for the milestone grid. */
+  var NITRO_SHEET_TIERS = [
+    { name: "Bronze", sub: "1 Month", h: "4f33c4a9c64ce221936bd256c356f91f" },
+    { name: "Silver", sub: "3 Months", h: "4514fab914bdbfb4ad2fa23df76121a6" },
+    { name: "Gold", sub: "6 Months", h: "2895086c18d5531d499862e41d1155a6" },
+    { name: "Platinum", sub: "1 Year", h: "0334688279c8359120922938dcb1d6f8" },
+    { name: "Diamond", sub: "2 Years", h: "0d61871f72bb9a33a7ae568c1fb4f20a" },
+    { name: "Emerald", sub: "3 Years", h: "11e2d339068b55d3a506cff34d3780f3" },
+    { name: "Ruby", sub: "5 Years", h: "cd5e2cfd9d7f27a8cdcd3e8a8d5dc9f4" },
+    { name: "Opal", sub: "6+ Years", h: "5b154df19c53dce2af92c9b61e6be5e2" }
+  ];
+
+  var LARP_BADGE_TO_SHEET_INDEX = {
+    "larp-premium": 0,
+    "larp-premium_tenure_3_month": 1,
+    "larp-premium_tenure_6_month": 2,
+    "larp-premium_tenure_12_month": 3,
+    "larp-premium_tenure_24_month": 4,
+    "larp-premium_tenure_36_month": 5,
+    "larp-premium_tenure_emerald": 5,
+    "larp-premium_tenure_ruby": 6,
+    "larp-premium_tenure_opal": 7
+  };
+
+  function larpNitroSheetSelectedIndex(openedId) {
+    if (typeof openedId !== "string") return -1;
+    if (LARP_BADGE_TO_SHEET_INDEX.hasOwnProperty(openedId)) {
+      return LARP_BADGE_TO_SHEET_INDEX[openedId];
+    }
+    return -1;
+  }
+
+  function isLarpNitroProfileBadgeId(id) {
+    return typeof id === "string" && id.indexOf("larp-premium") === 0;
+  }
+
+  function hideNitroMilestonesSheet() {
+    try {
+      var ac = findByProps("openLazy", "hideActionSheet");
+      if (ac && typeof ac.hideActionSheet === "function") {
+        ac.hideActionSheet(NITRO_MILESTONES_SHEET_KEY);
+      }
+    } catch (_) {}
+  }
+
+  function openNitroMilestonesSheet(openedBadgeId) {
+    try {
+      var ac = findByProps("openLazy", "hideActionSheet");
+      if (ac && typeof ac.openLazy === "function") {
+        ac.openLazy(
+          Promise.resolve({ default: NitroMilestonesSheet }),
+          NITRO_MILESTONES_SHEET_KEY,
+          { openedBadgeId: openedBadgeId }
+        );
+        return true;
+      }
+    } catch (_) {}
+    return false;
+  }
+
+  /** Bottom sheet: Nitro milestone grid (local preview, avoids broken Manage Nitro). */
+  function NitroMilestonesSheet(props) {
+    var openedId = (props && props.openedBadgeId) || "";
+    var sel = larpNitroSheetSelectedIndex(openedId);
+    var Image = RN.Image;
+    var cells = [];
+    for (var ci = 0; ci < NITRO_SHEET_TIERS.length; ci++) {
+      var row = NITRO_SHEET_TIERS[ci];
+      var uri = CDN + "/" + row.h + ".png";
+      var selected = sel === ci;
+      cells.push(
+        React.createElement(
+          View,
+          {
+            key: "nmt-" + ci,
+            style: {
+              width: "31%",
+              marginBottom: 14,
+              paddingVertical: 10,
+              paddingHorizontal: 4,
+              borderRadius: 12,
+              borderWidth: selected ? 2 : 0,
+              borderColor: selected ? "#5865f2" : "transparent",
+              backgroundColor: selected ? "#2b2d31" : "transparent",
+              alignItems: "center"
+            }
+          },
+          Image
+            ? React.createElement(Image, {
+                source: { uri: uri },
+                style: { width: 64, height: 64 },
+                resizeMode: "contain"
+              })
+            : null,
+          React.createElement(Text, {
+            style: { color: "#ffffff", fontWeight: "700", marginTop: 6, fontSize: 13, textAlign: "center" }
+          }, row.name),
+          React.createElement(Text, {
+            style: { color: "#b5bac1", fontSize: 11, textAlign: "center", marginTop: 2 }
+          }, row.sub),
+          selected
+            ? React.createElement(Text, {
+                style: {
+                  color: "#949ba4",
+                  fontSize: 10,
+                  marginTop: 6,
+                  textAlign: "center",
+                  lineHeight: 14
+                }
+              }, "Subscriber since —\n(Larp · aperçu local)")
+            : null
+        )
+      );
+    }
+
+    return React.createElement(
+      View,
+      { style: { backgroundColor: "#111214", paddingHorizontal: 14, paddingTop: 8, paddingBottom: 20 } },
+      React.createElement(Text, {
+        style: {
+          color: "#ffffff",
+          fontSize: 17,
+          fontWeight: "700",
+          textAlign: "center",
+          marginBottom: 6,
+          lineHeight: 22
+        }
+      }, "Celebrate Your Nitro Milestones in Style"),
+      React.createElement(Text, {
+        style: {
+          color: "#b5bac1",
+          fontSize: 13,
+          textAlign: "center",
+          marginBottom: 16,
+          lineHeight: 18
+        }
+      }, "Your badge will automatically evolve over time."),
+      React.createElement(ScrollView, {
+        style: { maxHeight: 420 },
+        showsVerticalScrollIndicator: false
+      },
+        React.createElement(View, {
+          style: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" }
+        }, cells)
+      ),
+      React.createElement(Pressable, {
+        onPress: hideNitroMilestonesSheet,
+        style: {
+          marginTop: 12,
+          paddingVertical: 12,
+          borderRadius: 8,
+          backgroundColor: "#4e5058",
+          alignItems: "center"
+        }
+      },
+        React.createElement(Text, {
+          style: { color: "#ffffff", fontWeight: "600", fontSize: 15 }
+        }, "Fermer")
+      ),
+      React.createElement(Text, {
+        style: { color: "#6d7278", fontSize: 11, textAlign: "center", marginTop: 10 }
+      }, "Larp — aucune donnée serveur ; affichage client uniquement.")
+    );
+  }
+
   /**
    * Same idea as Kettu's core badges plugin: remote badge rows from
    * useBadges need `props.source` applied when ProfileBadge / RenderedBadge
@@ -661,6 +828,15 @@
         ret.props.source = { uri: meta.uri };
         if (ret.props.description == null || ret.props.description === "") {
           ret.props.description = meta.label;
+        }
+        if (isLarpNitroProfileBadgeId(id)) {
+          ret.props.onPress = function () {
+            if (!openNitroMilestonesSheet(id)) {
+              try {
+                showToast("[Larp] Grille Nitro indisponible", getAssetIDByName("Small"));
+              } catch (_) {}
+            }
+          };
         }
         return ret;
       }

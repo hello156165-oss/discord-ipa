@@ -1,7 +1,7 @@
 {
   "name": "Larp",
-  "description": "[v9.9] Ordre plaque: Nitro|Staff|Partner|Events|Dev|Early|Boost|autres.",
-  "authors": [{ "name": "hello156165 (v9.9)" }],
+  "description": "[v10.0] Tap Nitro Larp → feuille « Milestones » (grille locale). Ordre plaque v9.9.",
+  "authors": [{ "name": "hello156165 (v10.0)" }],
   "main": "index.js",
   "hash": "REPLACED_AT_BUILD_TIME",
   "vendetta": {
