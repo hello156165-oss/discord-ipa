@@ -1,7 +1,7 @@
 {
   "name": "Larp",
-  "description": "[v9.2] Fix badge crash (no duplicate unshift) + stable user Proxy + badge icon shape.",
-  "authors": [{ "name": "hello156165 (v9.2)" }],
+  "description": "[v9.3] Badge icons: inject CDN source via ProfileBadge jsx hook (same as Kettu rain-badges).",
+  "authors": [{ "name": "hello156165 (v9.3)" }],
   "main": "index.js",
   "hash": "REPLACED_AT_BUILD_TIME",
   "vendetta": {

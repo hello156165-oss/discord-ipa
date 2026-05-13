@@ -70,27 +70,42 @@
     { id: "quest",                   label: "Completed a Quest",        asset: "QuestBadge",                       url: CDN + "/7d9ae358c8c5e118768335dbe68b4fb8.png" }
   ];
 
+  /** CDN + label for each synthetic badge id (used by JSX hook below). */
+  var LARP_BADGE_META = {};
+  for (var _bi = 0; _bi < BADGES.length; _bi++) {
+    var _bb = BADGES[_bi];
+    LARP_BADGE_META["larp-" + _bb.id] = { uri: _bb.url, label: _bb.label };
+  }
+
   function makeBadgePayload(b) {
     var assetId = null;
     try {
       assetId = getAssetIDByName(b.asset);
     } catch (_) {}
-    // Discord RN expects numeric `icon` / `source` for built-in assets.
-    // A string asset name + remote URI confused ProfileBadge and caused
-    // render crashes. Match the rain-badge pattern when using CDN.
-    if (assetId != null && typeof assetId === "number") {
-      return {
-        id: "larp-" + b.id,
-        description: b.label,
-        icon: assetId,
-        source: assetId
-      };
+    // Built-in asset id → Discord resolves icon itself.
+    if (assetId != null) {
+      var num =
+        typeof assetId === "number"
+          ? assetId
+          : typeof assetId === "string"
+            ? parseInt(assetId, 10)
+            : NaN;
+      if (!isNaN(num) && isFinite(num)) {
+        return {
+          id: "larp-" + b.id,
+          description: b.label,
+          icon: num,
+          source: num
+        };
+      }
     }
+    // Remote PNG: the useBadges array alone is NOT enough on iOS — Kettu's
+    // rain-badges plugin injects `source` in a ProfileBadge / RenderedBadge
+    // jsx hook. We do the same in patchBadgeIconsViaJsx().
     return {
       id: "larp-" + b.id,
       description: b.label,
-      icon: " ",
-      source: { uri: b.url }
+      icon: " "
     };
   }
 
@@ -275,6 +290,40 @@
     }
   }
 
+  /**
+   * Same idea as Kettu's core badges plugin: remote badge rows from
+   * useBadges need `props.source` applied when ProfileBadge / RenderedBadge
+   * is actually created via the jsx runtime.
+   */
+  function patchBadgeIconsViaJsx() {
+    try {
+      var jsxRuntime = findByProps("jsx", "jsxs");
+      if (!jsxRuntime) return;
+
+      function onJsx(args, ret) {
+        if (!ret || !ret.props) return ret;
+        var Type = args[0];
+        if (typeof Type !== "function") return ret;
+        var n = Type.displayName || Type.name;
+        if (n !== "ProfileBadge" && n !== "RenderedBadge") return ret;
+        var id = ret.props.id;
+        if (typeof id !== "string" || id.indexOf("larp-") !== 0) return ret;
+        var meta = LARP_BADGE_META[id];
+        if (!meta) return ret;
+        ret.props.source = { uri: meta.uri };
+        if (ret.props.description == null || ret.props.description === "") {
+          ret.props.description = meta.label;
+        }
+        return ret;
+      }
+
+      unpatches.push(after("jsx", jsxRuntime, onJsx));
+      unpatches.push(after("jsxs", jsxRuntime, onJsx));
+    } catch (e) {
+      console.error("[Larp] patchBadgeIconsViaJsx failed", e);
+    }
+  }
+
   // ---------------------------------------------------------------------
   // Settings UI (React.createElement only, NO JSX).
   // ---------------------------------------------------------------------
@@ -415,6 +464,7 @@
       try { showToast("Larp loaded", getAssetIDByName("Check")); } catch (_) {}
       patchUsername();
       patchBadges();
+      patchBadgeIconsViaJsx();
     },
     onUnload: function () {
       for (var i = 0; i < unpatches.length; i++) {
