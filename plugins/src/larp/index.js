@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  var LARP_UI_TAG = "v10.6";
+  var LARP_UI_TAG = "v10.7";
 
   var React = vendetta.metro.common.React;
   var RN = vendetta.metro.common.ReactNative;
@@ -391,6 +391,47 @@
     if (isBoostBadgeRow(b, boostPayload)) return 60;
 
     return 100;
+  }
+
+  function openLarpNitroBoostSheet(innerId, meta) {
+    var isBoost = BOOST_LARP_SET[innerId];
+    var title = isBoost ? "Boost" : "Nitro";
+    var sca =
+      vendetta.ui &&
+      vendetta.ui.alerts &&
+      typeof vendetta.ui.alerts.showConfirmationAlert === "function"
+        ? vendetta.ui.alerts.showConfirmationAlert
+        : null;
+    try {
+      if (sca) {
+        var body = React.createElement(
+          Text,
+          { style: { color: "#dcddde", fontSize: 16, lineHeight: 22 } },
+          meta.label + "\n\n" + "Aperçu local (Larp)."
+        );
+        var opts = {
+          title: title,
+          content: body,
+          confirmText: "OK",
+          onConfirm: function () {}
+        };
+        if (!isBoost) {
+          opts.secondaryConfirmText = "discord.com/nitro";
+          opts.onConfirmSecondary = function () {
+            try {
+              if (RN.Linking && typeof RN.Linking.openURL === "function") {
+                RN.Linking.openURL("https://discord.com/nitro");
+              }
+            } catch (_lk) {}
+          };
+        }
+        sca(opts);
+        return;
+      }
+    } catch (_al) {}
+    try {
+      showToast(meta.label, getAssetIDByName("Nitro"));
+    } catch (_t) {}
   }
 
   var unpatches = [];
@@ -835,6 +876,9 @@
             } catch (_lp) {}
             ret.props.onPress = undefined;
             ret.props.onLongPress = undefined;
+            ret.props.onPress = function () {
+              openLarpNitroBoostSheet(innerId, meta);
+            };
           }
           if (ret.props.description == null || ret.props.description === "") {
             ret.props.description = meta.label;
