@@ -117,22 +117,28 @@ export function getApi(): LarpApi {
         safeGet(() => b?.api?.patcher?.instead),
     },
     assets: {
+      // window.vendetta exposes the asset lookup at `ui.assets`, NOT
+      // `api.assets`. Same path used by every existing Vendetta plugin.
       findAssetId:
-        safeGet(() => v?.api?.assets?.getAssetIDByName) ??
+        safeGet(() => v?.ui?.assets?.getAssetIDByName) ??
         safeGet(() => b?.api?.assets?.findAssetId) ??
         safeGet(() => b?.api?.assets?.getAssetIDByName),
       getAssetIDByName:
-        safeGet(() => v?.api?.assets?.getAssetIDByName) ??
+        safeGet(() => v?.ui?.assets?.getAssetIDByName) ??
         safeGet(() => b?.api?.assets?.getAssetIDByName) ??
         safeGet(() => b?.api?.assets?.findAssetId),
     },
     toasts: {
+      // showToast is at `vendetta.ui.toasts.showToast`, same for bunny.
       showToast:
-        safeGet(() => v?.api?.toasts?.showToast) ??
+        safeGet(() => v?.ui?.toasts?.showToast) ??
+        safeGet(() => b?.ui?.toasts?.showToast) ??
         safeGet(() => b?.api?.toasts?.showToast),
     },
     settings: {
-      registerSection: safeGet(() => b?.ui?.settings?.registerSection),
+      registerSection:
+        safeGet(() => b?.ui?.settings?.registerSection) ??
+        safeGet(() => v?.ui?.settings?.registerSection),
     },
   };
 

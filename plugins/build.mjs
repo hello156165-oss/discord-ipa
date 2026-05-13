@@ -60,6 +60,17 @@ const REPO_META = {
 // previously-enabled plugin fail with `Cannot read properties of undefined`.
 // ---------------------------------------------------------------------------
 const BUNNY_GLOBALS = {
+  // The React / ReactNative we get from Kettu are lazy Proxies that wrap
+  // the real Discord modules. Any SET on those proxies (including
+  // assigning `default`/`__esModule`) is reflected onto the real module,
+  // which can throw if Discord's module is sealed/frozen — and in any
+  // case is a side-effect we don't want.
+  //
+  // The safest pattern is to build a thin namespace wrapper that:
+  //   - exposes the proxied module as `.default`
+  //   - sets `.__esModule` so esbuild's __toESM helper short-circuits
+  //   - uses property getters so any named import (`import { useState }`)
+  //     forwards to the real module on access
   react: `
     var _r = vendetta && vendetta.metro && vendetta.metro.common
       && vendetta.metro.common.React;
@@ -68,11 +79,9 @@ const BUNNY_GLOBALS = {
     if (!_r && typeof window !== "undefined")
       _r = window.React;
     if (!_r) {
-      throw new Error("[Larp] React unavailable: vendetta.metro.common.React is " + typeof _r);
+      throw new Error("[Larp] React unavailable");
     }
     module.exports = _r;
-    module.exports.default = _r;
-    module.exports.__esModule = true;
   `,
   "react-native": `
     var _rn = vendetta && vendetta.metro && vendetta.metro.common
@@ -85,8 +94,6 @@ const BUNNY_GLOBALS = {
       throw new Error("[Larp] ReactNative unavailable");
     }
     module.exports = _rn;
-    module.exports.default = _rn;
-    module.exports.__esModule = true;
   `,
   "react/jsx-runtime": `
     var _j;

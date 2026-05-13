@@ -19,7 +19,7 @@ import { applyDefaults, type LarpStorage } from "./storage";
  * really being evaluated and that `onLoad` runs to completion.
  */
 
-const LARP_VERSION = "v4-runtime";
+const LARP_VERSION = "v5-no-mutate";
 
 declare const vendetta: {
   plugin?: {
