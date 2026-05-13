@@ -1,7 +1,7 @@
 {
   "name": "Larp",
-  "description": "[v9.7] Nitro/Boost à gauche + ids natifs (tap = Nitro Home); masquer Quest/Orb par asset; PNG tiers.",
-  "authors": [{ "name": "hello156165 (v9.7)" }],
+  "description": "[v9.8] Ordre Nitro+Boost forcé; feuille Level/April Fools; ids larp (fix chargement infini Nitro).",
+  "authors": [{ "name": "hello156165 (v9.8)" }],
   "main": "index.js",
   "hash": "REPLACED_AT_BUILD_TIME",
   "vendetta": {
