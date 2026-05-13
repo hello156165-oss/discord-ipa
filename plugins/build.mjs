@@ -1,27 +1,27 @@
-// Build script for Kettu external plugins (Vendetta format).
+// Build script for Kettu external plugins — DEAD SIMPLE version.
 //
-// Why Vendetta and not the newer Bunny "spec 3" format?
-// ----------------------------------------------------
-// Kettu's settings UI ("Add a plugin" button) talks to `VdPluginManager`, which
-// fetches `<url>/manifest.json` + `<url>/<main>` and `eval`s the JS through the
-// wrapper `vendetta => { return <JS> }`. The Bunny manifest/repo format exists
-// in the code but is NOT exposed in the UI yet. So shipping plugins as
-// "Vendetta plugins" is the path of least resistance for now.
+// For each subdirectory in src/, we expect:
+//   - manifest.json
+//   - index.js  (plain JS that is ALREADY an expression — typically an IIFE
+//                that returns the plugin object, see src/larp/index.js).
 //
-// For each subdirectory in src/, this script:
-//   1. reads its manifest.json
-//   2. bundles its entry (index.tsx | ts | jsx | js) with esbuild in CJS mode
-//   3. wraps the CJS output in an expression that, when `eval`d by Kettu,
-//      yields the plugin instance via `module.exports.default`
-//   4. emits builds/<name>/{manifest.json,index.js} where <name> matches the
-//      slug used in the install URL (we use the source directory name, which
-//      is human-readable and stable)
-//   5. computes a SHA256 hash of the bundle and writes it back into the
-//      manifest, so Kettu cache-busts whenever the bundle changes
+// What this script does:
+//   1. reads manifest.json + index.js
+//   2. wraps index.js in a global try/catch with diagnostic toasts +
+//      a `Larp diagnostic` alert dialog if anything throws (so we never
+//      get a silent failure that flips the Kettu toggle back to OFF)
+//   3. computes a SHA256 hash of the wrapped output and writes it into
+//      the manifest so Kettu invalidates its cache when the bundle
+//      changes
+//   4. writes builds/<dir>/{manifest.json,index.js} + a top-level
+//      plugins/repo.json index
 //
-// A top-level plugins/repo.json index is still produced for convenience.
+// NO esbuild. NO TypeScript. NO React/RN imports. The plugin source is
+// expected to be plain JS that grabs everything off the `vendetta`
+// arrow parameter Kettu provides. This avoids every class of bug we
+// hit when esbuild's __toESM helper tried to mutate Kettu's lazy
+// React proxy (which forwards SETs to the real, frozen Discord module).
 
-import { build, context } from "esbuild";
 import {
   readdirSync,
   readFileSync,
@@ -44,255 +44,92 @@ const REPO_META = {
   description: "Personal Kettu plugin repository.",
 };
 
-// ---------------------------------------------------------------------------
-// esbuild plugin: rewrite imports of react / react-native / jsx-runtime so
-// the bundle uses Discord's existing React/RN instance instead of shipping
-// its own copy (which would break hooks because of two React instances).
-//
-// IMPORTANT: we resolve through the `vendetta` arrow parameter rather than
-// the `bunny` global. Kettu wraps plugin JS as
-//   `vendetta => { return ${plugin.js} }`
-// and `vendetta.metro.common.React/ReactNative` is set BEFORE plugin code
-// runs (it is part of `window.vendetta` populated by `initVendettaObject`).
-// `window.bunny`, on the other hand, is only assigned AFTER initPlugins
-// has finished firing off plugin starts — so on app launch it can be
-// undefined when our module is evaluated, which used to make every
-// previously-enabled plugin fail with `Cannot read properties of undefined`.
-// ---------------------------------------------------------------------------
-const BUNNY_GLOBALS = {
-  // The React / ReactNative we get from Kettu are lazy Proxies that wrap
-  // the real Discord modules. Any SET on those proxies (including
-  // assigning `default`/`__esModule`) is reflected onto the real module,
-  // which can throw if Discord's module is sealed/frozen — and in any
-  // case is a side-effect we don't want.
-  //
-  // The safest pattern is to build a thin namespace wrapper that:
-  //   - exposes the proxied module as `.default`
-  //   - sets `.__esModule` so esbuild's __toESM helper short-circuits
-  //   - uses property getters so any named import (`import { useState }`)
-  //     forwards to the real module on access
-  react: `
-    var _r = vendetta && vendetta.metro && vendetta.metro.common
-      && vendetta.metro.common.React;
-    if (!_r && typeof bunny !== "undefined")
-      _r = bunny.metro && bunny.metro.common && bunny.metro.common.React;
-    if (!_r && typeof window !== "undefined")
-      _r = window.React;
-    if (!_r) {
-      throw new Error("[Larp] React unavailable");
-    }
-    module.exports = _r;
-  `,
-  "react-native": `
-    var _rn = vendetta && vendetta.metro && vendetta.metro.common
-      && vendetta.metro.common.ReactNative;
-    if (!_rn && typeof bunny !== "undefined")
-      _rn = bunny.metro && bunny.metro.common && bunny.metro.common.ReactNative;
-    if (!_rn && typeof window !== "undefined")
-      _rn = window.ReactNative;
-    if (!_rn) {
-      throw new Error("[Larp] ReactNative unavailable");
-    }
-    module.exports = _rn;
-  `,
-  "react/jsx-runtime": `
-    var _j;
-    try {
-      _j = vendetta && vendetta.metro && vendetta.metro.findByProps
-        && vendetta.metro.findByProps("jsx", "jsxs");
-    } catch (e) {}
-    if (!_j && typeof bunny !== "undefined") {
-      try { _j = bunny.metro && bunny.metro.findByProps("jsx", "jsxs"); } catch(e){}
-    }
-    if (!_j) _j = { jsx: undefined, jsxs: undefined, Fragment: undefined };
-    module.exports = {
-      jsx: _j.jsx,
-      jsxs: _j.jsxs,
-      Fragment: _j.Fragment,
-      __esModule: true,
-    };
-  `,
-  "react/jsx-dev-runtime": `
-    var _j;
-    try {
-      _j = vendetta && vendetta.metro && vendetta.metro.findByProps
-        && vendetta.metro.findByProps("jsxDEV", "jsx", "jsxs");
-    } catch (e) {}
-    if (!_j && typeof bunny !== "undefined") {
-      try { _j = bunny.metro && bunny.metro.findByProps("jsxDEV", "jsx", "jsxs"); } catch(e){}
-    }
-    if (!_j) _j = { jsxDEV: undefined, jsx: undefined, Fragment: undefined };
-    module.exports = {
-      jsxDEV: _j.jsxDEV || _j.jsx,
-      Fragment: _j.Fragment,
-      __esModule: true,
-    };
-  `,
-};
-
-function bunnyGlobalsPlugin() {
-  return {
-    name: "bunny-globals",
-    setup(b) {
-      const filter = new RegExp(
-        `^(${Object.keys(BUNNY_GLOBALS)
-          .map((k) => k.replace(/[/\\.]/g, "\\$&"))
-          .join("|")})$`
-      );
-      b.onResolve({ filter }, (args) => ({
-        path: args.path,
-        namespace: "bunny-global",
-      }));
-      b.onLoad({ filter: /.*/, namespace: "bunny-global" }, (args) => ({
-        contents: BUNNY_GLOBALS[args.path],
-        loader: "js",
-      }));
-    },
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 function listPluginDirs() {
   if (!existsSync(SRC)) return [];
   return readdirSync(SRC).filter((name) => {
     const full = join(SRC, name);
     return (
-      statSync(full).isDirectory() && existsSync(join(full, "manifest.json"))
+      statSync(full).isDirectory() &&
+      existsSync(join(full, "manifest.json")) &&
+      existsSync(join(full, "index.js"))
     );
   });
 }
 
-function resolveEntry(pluginDir) {
-  const candidates = ["index.tsx", "index.ts", "index.jsx", "index.js"];
-  for (const cand of candidates) {
-    const p = join(pluginDir, cand);
-    if (existsSync(p)) return p;
-  }
-  throw new Error(
-    `Could not find entry point for plugin at ${pluginDir} ` +
-      `(looked for ${candidates.join(", ")})`
-  );
-}
-
-function makeBuildOptions(pluginId, srcDir) {
-  return {
-    entryPoints: [resolveEntry(srcDir)],
-    bundle: true,
-    write: false, // we wrap and write the output ourselves
-    format: "cjs",
-    platform: "neutral",
-    target: ["es2022"],
-    jsx: "automatic",
-    jsxImportSource: "react",
-    minify: false,
-    sourcemap: false,
-    legalComments: "none",
-    define: {
-      "process.env.NODE_ENV": JSON.stringify("production"),
-    },
-    plugins: [bunnyGlobalsPlugin()],
-    logLevel: "info",
-  };
-}
-
 /**
- * Wrap the raw CJS output of esbuild into a single JavaScript expression that
- * Kettu's plugin loader can evaluate directly.
+ * Wrap the raw plugin expression with a global try/catch + diagnostic
+ * dialog. The plugin source MUST itself evaluate to an expression
+ * (typically an IIFE that returns the plugin object).
  *
- * Kettu wraps `plugin.js` in `vendetta => { return ${plugin.js} }`, so we MUST
- * produce an expression here — not a statement. We do that with an IIFE that
- * provides `module` and `exports` locals, runs the CJS body, then returns
- * `module.exports.default ?? module.exports`.
+ * The wrapper:
+ *   - declares __larpShow (toast helper) + __larpAlert (modal helper)
+ *   - fires "[Larp] bundle entered" the instant we start executing
+ *   - records `globalThis.__LARP_BUNDLE_ENTERED__` so it can be inspected
+ *     via Kettu's /eval command after the fact
+ *   - if the plugin expression throws, pops a Discord confirmation alert
+ *     with the message + stack and falls back to a stub plugin so the
+ *     toggle does not silently revert to OFF.
+ *
+ * Result: a single JS expression suitable for `vendetta => { return EXPR }`.
  */
-function wrapAsExpression(cjsCode, pluginId) {
-  // Strip the leading `"use strict";` directive — it's harmless but useless
-  // here, and keeping it would put a *statement* before our expression on
-  // some platforms (we want a clean expression).
-  const stripped = cjsCode.replace(/^\s*["']use strict["'];?\s*/, "");
+function wrapAsExpression(rawJs, pluginId) {
+  // Strip a leading `"use strict";` (the wrapper has its own).
+  const stripped = rawJs.replace(/^\s*["']use strict["'];?\s*/, "");
 
-  // CRITICAL: the very first character of our output must be `(` so that when
-  // Kettu wraps us as `vendetta => { return ${plugin.js} }`, the parser
-  // recognises the body as an expression and DOES NOT perform automatic
-  // semicolon insertion after `return`. A leading comment OR a leading
-  // newline between `return` and the IIFE would turn this into
-  // `return;\n(IIFE);` — i.e. the arrow returns `undefined` and the IIFE
-  // runs but its result is discarded. We learned this the hard way.
-  //
-  // We move the build-info comment INSIDE the IIFE so the public file still
-  // contains attribution, but it cannot disrupt parsing.
-  // We wrap the ENTIRE bundle body in a try/catch. If the bundle throws
-  // (e.g. accessing the React lazy proxy fails, or any module-init code
-  // explodes), we:
-  //   1. fire an "early breadcrumb" toast so the user sees that the bundle
-  //      at least started executing
-  //   2. fire a "BUNDLE THREW" toast carrying the error message
-  //   3. expose the error on `globalThis.__LARP_BUNDLE_ERROR__` so it can
-  //      be inspected from the Kettu eval console
-  //   4. swallow the error and return a stub plugin object so Kettu sets
-  //      `plugin.enabled = true` (the toggle stays ON) and the user can
-  //      still see the diagnostic toast. The plugin obviously won't do
-  //      anything useful, but at least we get visibility instead of a
-  //      silent toggle-revert.
-  return (
-    `(function(){` +
-    `\n  /* Larp plugin bundle for ${pluginId} (Vendetta format).` +
-    `\n     Built ${new Date().toISOString()}.` +
-    `\n     Loaded by Kettu via VdPluginManager.evalPlugin. */` +
-    `\n  "use strict";` +
-    `\n  var module = { exports: {} };` +
-    `\n  var exports = module.exports;` +
-    `\n  function __larpAssetId(){` +
-    `\n    try {` +
-    `\n      var g = (typeof vendetta !== "undefined" && vendetta && vendetta.ui && vendetta.ui.assets && vendetta.ui.assets.getAssetIDByName)` +
-    `\n           || (typeof bunny !== "undefined" && bunny && bunny.api && bunny.api.assets && (bunny.api.assets.getAssetIDByName || bunny.api.assets.findAssetId));` +
-    `\n      if (g) return g("Check");` +
-    `\n    } catch(__){}` +
-    `\n    return undefined;` +
-    `\n  }` +
-    `\n  function __larpAlert(msg){` +
-    `\n    try {` +
-    `\n      var a = (typeof vendetta !== "undefined" && vendetta && vendetta.ui && vendetta.ui.alerts && vendetta.ui.alerts.showConfirmationAlert);` +
-    `\n      if (a) a({ title: "Larp diagnostic", content: msg, confirmText: "OK" });` +
-    `\n    } catch(__){}` +
-    `\n  }` +
-    `\n  function __larpShow(msg){` +
-    `\n    try {` +
-    `\n      var f = (typeof vendetta !== "undefined" && vendetta && vendetta.ui && vendetta.ui.toasts && vendetta.ui.toasts.showToast)` +
-    `\n           || (typeof bunny !== "undefined" && bunny && bunny.ui && bunny.ui.toasts && bunny.ui.toasts.showToast);` +
-    `\n      var aid;` +
-    `\n      try { aid = __larpAssetId(); } catch(__){}` +
-    `\n      if (f) { try { f(msg, aid); } catch(__) { try { f(msg); } catch(___) {} } }` +
-    `\n      else if (typeof console !== "undefined") console.log(msg);` +
-    `\n    } catch(__){}` +
-    `\n  }` +
-    `\n  try { (globalThis||{}).__LARP_BUNDLE_ENTERED__ = Date.now(); } catch(__){}` +
-    `\n  try { (globalThis||{}).__LARP_BUNDLE_VERSION__ = ${JSON.stringify(`v7+${new Date().toISOString()}`)}; } catch(__){}` +
-    `\n  __larpShow("[Larp] bundle entered");` +
-    `\n  try {` +
-    `\n${stripped}` +
-    `\n  } catch (__larpBundleError) {` +
-    `\n    try { (globalThis||{}).__LARP_BUNDLE_ERROR__ = __larpBundleError; } catch(__){}` +
-    `\n    var __msg = "[Larp BUNDLE THREW] " + ((__larpBundleError && __larpBundleError.message) || String(__larpBundleError));` +
-    `\n    __larpShow(__msg);` +
-    `\n    __larpAlert(__msg + "\\n\\nStack:\\n" + ((__larpBundleError && __larpBundleError.stack) || "(no stack)"));` +
-    `\n    if (typeof console !== "undefined") console.error("[Larp] bundle threw:", __larpBundleError);` +
-    `\n    module.exports = { default: {` +
-    `\n      onLoad: function(){ __larpShow("[Larp] onLoad noop — bundle had thrown"); },` +
-    `\n      onUnload: function(){},` +
-    `\n      settings: undefined` +
-    `\n    }};` +
-    `\n  }` +
-    `\n  return module.exports.default != null ? module.exports.default : module.exports;` +
-    `\n})()`
-  );
+  // CRITICAL: first character must be `(` so that Kettu's
+  // `vendetta=>{return ${js}}` wrapping doesn't trigger Automatic
+  // Semicolon Insertion after `return`. The build-info comment is
+  // intentionally placed INSIDE the IIFE.
+  return [
+    `(function(){`,
+    `  /* Larp plugin bundle for ${pluginId}.`,
+    `     Built ${new Date().toISOString()}. */`,
+    `  "use strict";`,
+    `  function __larpAssetId(name){`,
+    `    try {`,
+    `      var g = vendetta && vendetta.ui && vendetta.ui.assets && vendetta.ui.assets.getAssetIDByName;`,
+    `      if (g) return g(name || "Check");`,
+    `    } catch (__) {}`,
+    `    return undefined;`,
+    `  }`,
+    `  function __larpShow(msg){`,
+    `    try {`,
+    `      var f = vendetta && vendetta.ui && vendetta.ui.toasts && vendetta.ui.toasts.showToast;`,
+    `      if (f) f(msg, __larpAssetId("Check"));`,
+    `      else if (typeof console !== "undefined") console.log(msg);`,
+    `    } catch (__) {}`,
+    `  }`,
+    `  function __larpAlert(title, content){`,
+    `    try {`,
+    `      var a = vendetta && vendetta.ui && vendetta.ui.alerts && vendetta.ui.alerts.showConfirmationAlert;`,
+    `      if (a) a({ title: title, content: content, confirmText: "OK" });`,
+    `    } catch (__) {}`,
+    `  }`,
+    `  try { (globalThis||{}).__LARP_BUNDLE_ENTERED__ = Date.now(); } catch (__) {}`,
+    `  __larpShow("[Larp] bundle entered");`,
+    `  try {`,
+    `    var __larpPlugin = (${stripped});`,
+    `    if (!__larpPlugin || typeof __larpPlugin !== "object") {`,
+    `      throw new Error("Larp source did not evaluate to a plugin object (got " + typeof __larpPlugin + ")");`,
+    `    }`,
+    `    return __larpPlugin;`,
+    `  } catch (err) {`,
+    `    try { (globalThis||{}).__LARP_BUNDLE_ERROR__ = err; } catch (__) {}`,
+    `    var msg = "[Larp BUNDLE THREW] " + ((err && err.message) || String(err));`,
+    `    __larpShow(msg);`,
+    `    __larpAlert("Larp diagnostic", msg + "\\n\\nStack:\\n" + ((err && err.stack) || "(no stack)"));`,
+    `    if (typeof console !== "undefined") console.error("[Larp] bundle threw:", err);`,
+    `    return {`,
+    `      onLoad: function(){ __larpShow("[Larp] onLoad noop — bundle had thrown"); },`,
+    `      onUnload: function(){},`,
+    `      settings: undefined`,
+    `    };`,
+    `  }`,
+    `})()`,
+  ].join("\n");
 }
 
-// ---------------------------------------------------------------------------
-// Driver
-// ---------------------------------------------------------------------------
-async function buildAll({ watch }) {
+async function buildAll() {
   if (existsSync(OUT)) rmSync(OUT, { recursive: true, force: true });
   mkdirSync(OUT, { recursive: true });
 
@@ -305,38 +142,20 @@ async function buildAll({ watch }) {
 
   for (const dirName of pluginDirs) {
     const pluginSrc = join(SRC, dirName);
-    const manifestRaw = readFileSync(join(pluginSrc, "manifest.json"), "utf8");
-    const manifest = JSON.parse(manifestRaw);
+    const manifest = JSON.parse(
+      readFileSync(join(pluginSrc, "manifest.json"), "utf8")
+    );
+    const rawJs = readFileSync(join(pluginSrc, "index.js"), "utf8");
 
-    // Use the source directory name as the URL slug. Stable, predictable.
     const slug = dirName;
     const outDir = join(OUT, slug);
     mkdirSync(outDir, { recursive: true });
 
     console.log(`\n— Building ${manifest.name} (${slug})`);
 
-    const opts = makeBuildOptions(slug, pluginSrc);
-
-    let bundleText;
-    if (watch) {
-      const ctx = await context({
-        ...opts,
-        write: false,
-      });
-      const result = await ctx.rebuild();
-      bundleText = result.outputFiles[0].text;
-      await ctx.watch();
-      console.log(`  watching ${pluginSrc}`);
-    } else {
-      const result = await build(opts);
-      bundleText = result.outputFiles[0].text;
-    }
-
-    const wrapped = wrapAsExpression(bundleText, slug);
+    const wrapped = wrapAsExpression(rawJs, slug);
     writeFileSync(join(outDir, "index.js"), wrapped);
 
-    // Hash drives Kettu's "is the cached copy still current?" check. Compute
-    // it AFTER wrapping so any change to the wrapper also invalidates caches.
     const hash = createHash("sha256")
       .update(wrapped)
       .digest("hex")
@@ -355,12 +174,13 @@ async function buildAll({ watch }) {
     };
 
     console.log(
-      `  → builds/${slug}/index.js (${(wrapped.length / 1024).toFixed(1)} kB, hash ${hash})`
+      `  → builds/${slug}/index.js (${(wrapped.length / 1024).toFixed(
+        1
+      )} kB, hash ${hash})`
     );
   }
 
   writeFileSync(join(OUT, "repo.json"), JSON.stringify(repo, null, 2));
-  // Top-level convenience copy so `<repo>/dist/plugins/repo.json` works.
   writeFileSync(
     resolve(__dirname, "repo.json"),
     JSON.stringify(repo, null, 2)
@@ -369,8 +189,7 @@ async function buildAll({ watch }) {
   console.log(`\nDone. Output in ${OUT}`);
 }
 
-const watch = process.argv.includes("--watch");
-buildAll({ watch }).catch((err) => {
+buildAll().catch((err) => {
   console.error(err);
   process.exit(1);
 });
