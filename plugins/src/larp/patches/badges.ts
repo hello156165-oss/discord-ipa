@@ -1,4 +1,5 @@
 import { ALL_BADGES, BADGES_BY_ID, type BadgeDefinition } from "../badges";
+import { getApi } from "../runtime";
 import type { LarpStorage } from "../storage";
 
 /**
@@ -15,7 +16,9 @@ import type { LarpStorage } from "../storage";
  *   - source      : { uri: string } image source override
  */
 function makeBadgePayload(badge: BadgeDefinition) {
-  const assetId = bunny.api.assets.findAssetId(badge.assetName);
+  const findAssetId = getApi().assets?.findAssetId;
+  const assetId =
+    typeof findAssetId === "function" ? findAssetId(badge.assetName) : null;
   return {
     id: `larp-${badge.id}`,
     description: badge.label,
@@ -33,17 +36,26 @@ function makeBadgePayload(badge: BadgeDefinition) {
  * `findByNameLazy`.
  */
 export function patchBadges(storage: LarpStorage): () => void {
-  const useBadgesModule = bunny.metro.findByNameLazy("useBadges", false);
+  const api = getApi();
+  const findByNameLazy =
+    api.metro.findByNameLazy ?? api.metro.findByName;
+  const useBadgesModule =
+    typeof findByNameLazy === "function"
+      ? findByNameLazy("useBadges", false)
+      : null;
   if (!useBadgesModule) {
-    bunny.plugin.logger.warn(
-      "[Larp] useBadges module not found, skipping badge patch"
-    );
+    console.warn("[Larp] useBadges module not found, skipping badge patch");
     return () => {};
   }
 
-  const UserStore = bunny.metro.findByStoreName("UserStore");
+  const UserStore = api.metro.findByStoreName?.("UserStore");
+  const after = api.patcher?.after;
+  if (typeof after !== "function") {
+    console.warn("[Larp] patcher.after not available, skipping badges patch");
+    return () => {};
+  }
 
-  return bunny.api.patcher.after(
+  return after(
     "default",
     useBadgesModule,
     ([userArg]: [{ userId?: string } | undefined], result: any[]) => {

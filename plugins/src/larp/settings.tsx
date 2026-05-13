@@ -1,6 +1,7 @@
 import * as React from "react";
 
 import { ALL_BADGES } from "./badges";
+import { getApi } from "./runtime";
 import type { LarpStorage } from "./storage";
 
 interface Props {
@@ -18,8 +19,9 @@ interface Props {
 // suspect was making `Configure` open a blank/broken page.
 
 function pickComponents() {
-  const RN = bunny?.metro?.common?.ReactNative ?? ({} as any);
-  const c = bunny?.metro?.common?.components ?? ({} as any);
+  const api = getApi();
+  const RN = (api.metro.common.ReactNative ?? {}) as any;
+  const c = (api.metro.common.components ?? {}) as any;
 
   // Inline factory for a tiny "row" used when TableSwitchRow / TableRow
   // happen to be missing from the resolved components.
@@ -362,7 +364,7 @@ class LarpErrorBoundary extends React.Component<
   render() {
     if (!this.state.error) return this.props.children;
 
-    const RN = bunny?.metro?.common?.ReactNative ?? ({} as any);
+    const RN = (getApi().metro.common.ReactNative ?? {}) as any;
     const View = RN.View ?? ("View" as any);
     const Text = RN.Text ?? ("Text" as any);
     return React.createElement(

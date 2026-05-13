@@ -1,3 +1,4 @@
+import { getApi } from "../runtime";
 import type { LarpStorage } from "../storage";
 
 /**
@@ -12,8 +13,16 @@ import type { LarpStorage } from "../storage";
  * skipped (the plugin still works for everything else it can patch).
  */
 export function patchCreationDate(storage: LarpStorage): () => void {
+  const api = getApi();
   const unpatchers: Array<() => void> = [];
-  const UserStore = bunny.metro.findByStoreName("UserStore");
+  const UserStore = api.metro.findByStoreName?.("UserStore");
+  const after = api.patcher?.after;
+  if (typeof after !== "function") {
+    console.warn(
+      "[Larp] patcher.after not available, skipping creation date patch"
+    );
+    return () => {};
+  }
 
   const getOverride = (): Date | null => {
     if (!storage.enabled) return null;
@@ -23,19 +32,23 @@ export function patchCreationDate(storage: LarpStorage): () => void {
     return d;
   };
 
-  // 1) The "snowflake -> Date" utility. Most commonly the module exposes both
-  //    `extractTimestamp(id) -> number` and a `getCreationDate(id) -> Date`.
+  // The "snowflake -> Date" utility. Most commonly the module exposes both
+  // `extractTimestamp(id) -> number` and a `getCreationDate(id) -> Date`.
+  const findByProps = api.metro.findByProps;
   const snowflakeUtil =
-    bunny.metro.findByProps("extractTimestamp", "getCreationDate") ??
-    bunny.metro.findByProps("extractTimestamp") ??
-    bunny.metro.findByProps("getCreationDate");
+    typeof findByProps === "function"
+      ? (findByProps("extractTimestamp", "getCreationDate") ??
+        findByProps("extractTimestamp") ??
+        findByProps("getCreationDate"))
+      : null;
 
   if (snowflakeUtil) {
-    const currentId = () => UserStore?.getCurrentUser?.()?.id as string | undefined;
+    const currentId = () =>
+      UserStore?.getCurrentUser?.()?.id as string | undefined;
 
     if (typeof snowflakeUtil.getCreationDate === "function") {
       unpatchers.push(
-        bunny.api.patcher.after(
+        after(
           "getCreationDate",
           snowflakeUtil,
           ([id]: [string], result: Date) => {
@@ -49,7 +62,7 @@ export function patchCreationDate(storage: LarpStorage): () => void {
 
     if (typeof snowflakeUtil.extractTimestamp === "function") {
       unpatchers.push(
-        bunny.api.patcher.after(
+        after(
           "extractTimestamp",
           snowflakeUtil,
           ([id]: [string], result: number) => {
@@ -61,7 +74,7 @@ export function patchCreationDate(storage: LarpStorage): () => void {
       );
     }
   } else {
-    bunny.plugin.logger.warn(
+    console.warn(
       "[Larp] snowflake utility module not found, account creation date override may not apply everywhere"
     );
   }

@@ -48,23 +48,56 @@ const REPO_META = {
 // esbuild plugin: rewrite imports of react / react-native / jsx-runtime so
 // the bundle uses Discord's existing React/RN instance instead of shipping
 // its own copy (which would break hooks because of two React instances).
+//
+// IMPORTANT: we resolve through the `vendetta` arrow parameter rather than
+// the `bunny` global. Kettu wraps plugin JS as
+//   `vendetta => { return ${plugin.js} }`
+// and `vendetta.metro.common.React/ReactNative` is set BEFORE plugin code
+// runs (it is part of `window.vendetta` populated by `initVendettaObject`).
+// `window.bunny`, on the other hand, is only assigned AFTER initPlugins
+// has finished firing off plugin starts — so on app launch it can be
+// undefined when our module is evaluated, which used to make every
+// previously-enabled plugin fail with `Cannot read properties of undefined`.
 // ---------------------------------------------------------------------------
 const BUNNY_GLOBALS = {
   react: `
-    const _r = bunny.metro.common.React;
+    var _r = vendetta && vendetta.metro && vendetta.metro.common
+      && vendetta.metro.common.React;
+    if (!_r && typeof bunny !== "undefined")
+      _r = bunny.metro && bunny.metro.common && bunny.metro.common.React;
+    if (!_r && typeof window !== "undefined")
+      _r = window.React;
+    if (!_r) {
+      throw new Error("[Larp] React unavailable: vendetta.metro.common.React is " + typeof _r);
+    }
     module.exports = _r;
     module.exports.default = _r;
     module.exports.__esModule = true;
   `,
   "react-native": `
-    const _rn = bunny.metro.common.ReactNative;
+    var _rn = vendetta && vendetta.metro && vendetta.metro.common
+      && vendetta.metro.common.ReactNative;
+    if (!_rn && typeof bunny !== "undefined")
+      _rn = bunny.metro && bunny.metro.common && bunny.metro.common.ReactNative;
+    if (!_rn && typeof window !== "undefined")
+      _rn = window.ReactNative;
+    if (!_rn) {
+      throw new Error("[Larp] ReactNative unavailable");
+    }
     module.exports = _rn;
     module.exports.default = _rn;
     module.exports.__esModule = true;
   `,
   "react/jsx-runtime": `
-    const _j = (typeof bunny !== "undefined" && bunny._jsx)
-      || bunny.metro.findByProps("jsx", "jsxs");
+    var _j;
+    try {
+      _j = vendetta && vendetta.metro && vendetta.metro.findByProps
+        && vendetta.metro.findByProps("jsx", "jsxs");
+    } catch (e) {}
+    if (!_j && typeof bunny !== "undefined") {
+      try { _j = bunny.metro && bunny.metro.findByProps("jsx", "jsxs"); } catch(e){}
+    }
+    if (!_j) _j = { jsx: undefined, jsxs: undefined, Fragment: undefined };
     module.exports = {
       jsx: _j.jsx,
       jsxs: _j.jsxs,
@@ -73,8 +106,15 @@ const BUNNY_GLOBALS = {
     };
   `,
   "react/jsx-dev-runtime": `
-    const _j = (typeof bunny !== "undefined" && bunny._jsx)
-      || bunny.metro.findByProps("jsxDEV", "jsx", "jsxs");
+    var _j;
+    try {
+      _j = vendetta && vendetta.metro && vendetta.metro.findByProps
+        && vendetta.metro.findByProps("jsxDEV", "jsx", "jsxs");
+    } catch (e) {}
+    if (!_j && typeof bunny !== "undefined") {
+      try { _j = bunny.metro && bunny.metro.findByProps("jsxDEV", "jsx", "jsxs"); } catch(e){}
+    }
+    if (!_j) _j = { jsxDEV: undefined, jsx: undefined, Fragment: undefined };
     module.exports = {
       jsxDEV: _j.jsxDEV || _j.jsx,
       Fragment: _j.Fragment,

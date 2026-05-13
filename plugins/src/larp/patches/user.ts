@@ -1,3 +1,4 @@
+import { getApi } from "../runtime";
 import type { LarpStorage } from "../storage";
 
 /**
@@ -40,23 +41,29 @@ function wrapUser(user: any, storage: LarpStorage): any {
  * Returns an unpatch function.
  */
 export function patchCurrentUser(storage: LarpStorage): () => void {
-  const UserStore = bunny.metro.findByStoreName("UserStore");
+  const api = getApi();
+  const UserStore = api.metro.findByStoreName?.("UserStore");
   if (!UserStore) {
-    bunny.plugin.logger.warn("[Larp] UserStore not found, skipping user patch");
+    console.warn("[Larp] UserStore not found, skipping user patch");
+    return () => {};
+  }
+  const after = api.patcher?.after;
+  if (typeof after !== "function") {
+    console.warn("[Larp] patcher.after not available, skipping user patch");
     return () => {};
   }
 
   const unpatchers: Array<() => void> = [];
 
   unpatchers.push(
-    bunny.api.patcher.after("getCurrentUser", UserStore, (_args, result) => {
+    after("getCurrentUser", UserStore, (_args: unknown, result: any) => {
       if (!storage.enabled) return result;
       return wrapUser(result, storage);
     })
   );
 
   unpatchers.push(
-    bunny.api.patcher.after("getUser", UserStore, ([id]: [string], result) => {
+    after("getUser", UserStore, ([id]: [string], result: any) => {
       if (!storage.enabled) return result;
       const current = UserStore.getCurrentUser?.();
       if (current && id === current.id) {

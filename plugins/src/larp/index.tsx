@@ -3,6 +3,7 @@ import * as React from "react";
 import { patchBadges } from "./patches/badges";
 import { patchCreationDate } from "./patches/createdAt";
 import { patchCurrentUser } from "./patches/user";
+import { getApi } from "./runtime";
 import LarpSettings from "./settings";
 import { applyDefaults, type LarpStorage } from "./storage";
 
@@ -18,7 +19,7 @@ import { applyDefaults, type LarpStorage } from "./storage";
  * really being evaluated and that `onLoad` runs to completion.
  */
 
-const LARP_VERSION = "v3-diagnostic";
+const LARP_VERSION = "v4-runtime";
 
 declare const vendetta: {
   plugin?: {
@@ -32,12 +33,24 @@ declare const vendetta: {
   logger?: { log: (...a: unknown[]) => void; error: (...a: unknown[]) => void };
 };
 
+const trace: string[] = [];
+function breadcrumb(msg: string) {
+  trace.push(`${Date.now()} ${msg}`);
+  try {
+    (globalThis as any).__LARP_TRACE__ = trace;
+  } catch {
+    // ignored
+  }
+}
+
 /**
- * Best-effort toast. Tries `vendetta.api.toasts` first, then `bunny.api.toasts`,
- * and finally falls back to console. Never throws.
+ * Best-effort toast. Pulls the showToast function from the runtime helper,
+ * which prefers `vendetta` (always defined inside Kettu's plugin wrapper)
+ * over the `bunny` global (which is racey on app launch). Never throws.
  */
 function toast(msg: string, kind: "info" | "warn" | "error" = "info") {
   try {
+    const api = getApi();
     const assetName =
       kind === "error"
         ? "CircleXIcon-primary"
@@ -45,25 +58,20 @@ function toast(msg: string, kind: "info" | "warn" | "error" = "info") {
           ? "WarningIcon"
           : "CheckmarkSmallIcon";
 
-    const getAssetId =
-      vendetta?.api?.assets?.getAssetIDByName ??
-      ((globalThis as any).bunny?.api?.assets?.getAssetIDByName as
-        | ((name: string) => number | undefined)
-        | undefined);
-    const assetId = getAssetId ? getAssetId(assetName) : undefined;
+    const getAssetId = api.assets?.getAssetIDByName ?? api.assets?.findAssetId;
+    const assetId =
+      typeof getAssetId === "function" ? getAssetId(assetName) : undefined;
 
-    const show =
-      vendetta?.api?.toasts?.showToast ??
-      ((globalThis as any).bunny?.api?.toasts?.showToast as
-        | ((m: string, a?: number) => void)
-        | undefined);
-
+    const show = api.toasts?.showToast;
     if (show) {
-      show(`[Larp ${LARP_VERSION}] ${msg}`, assetId);
+      show(`[Larp ${LARP_VERSION}] ${msg}`, assetId ?? undefined);
+      breadcrumb(`toast OK: ${msg}`);
     } else {
       console.log(`[Larp ${LARP_VERSION}] toast unavailable: ${msg}`);
+      breadcrumb(`toast UNAVAILABLE: ${msg}`);
     }
-  } catch {
+  } catch (err) {
+    breadcrumb(`toast THREW: ${String(err)}`);
     // never throw from diagnostic code
   }
 }
@@ -108,6 +116,7 @@ const diag: LarpDiag = {
 
 try {
   (globalThis as any).__LARP__ = diag;
+  breadcrumb("module init: __LARP__ exposed");
 } catch {
   // ignored
 }
@@ -163,7 +172,7 @@ const pluginDefault = {
 
       // Try to register a dedicated section in the Discord settings menu.
       try {
-        const reg = (globalThis as any).bunny?.ui?.settings?.registerSection;
+        const reg = getApi().settings?.registerSection;
         if (typeof reg === "function") {
           unregisterSettingsSection = reg({
             name: "Larp",
