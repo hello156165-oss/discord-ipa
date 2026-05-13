@@ -222,6 +222,19 @@ function wrapAsExpression(cjsCode, pluginId) {
   //
   // We move the build-info comment INSIDE the IIFE so the public file still
   // contains attribution, but it cannot disrupt parsing.
+  // We wrap the ENTIRE bundle body in a try/catch. If the bundle throws
+  // (e.g. accessing the React lazy proxy fails, or any module-init code
+  // explodes), we:
+  //   1. fire an "early breadcrumb" toast so the user sees that the bundle
+  //      at least started executing
+  //   2. fire a "BUNDLE THREW" toast carrying the error message
+  //   3. expose the error on `globalThis.__LARP_BUNDLE_ERROR__` so it can
+  //      be inspected from the Kettu eval console
+  //   4. swallow the error and return a stub plugin object so Kettu sets
+  //      `plugin.enabled = true` (the toggle stays ON) and the user can
+  //      still see the diagnostic toast. The plugin obviously won't do
+  //      anything useful, but at least we get visibility instead of a
+  //      silent toggle-revert.
   return (
     `(function(){` +
     `\n  /* Larp plugin bundle for ${pluginId} (Vendetta format).` +
@@ -230,7 +243,29 @@ function wrapAsExpression(cjsCode, pluginId) {
     `\n  "use strict";` +
     `\n  var module = { exports: {} };` +
     `\n  var exports = module.exports;` +
+    `\n  function __larpShow(msg){` +
+    `\n    try {` +
+    `\n      var f = (typeof vendetta !== "undefined" && vendetta && vendetta.ui && vendetta.ui.toasts && vendetta.ui.toasts.showToast)` +
+    `\n           || (typeof bunny !== "undefined" && bunny && bunny.ui && bunny.ui.toasts && bunny.ui.toasts.showToast);` +
+    `\n      if (f) f(msg);` +
+    `\n      else if (typeof console !== "undefined") console.log(msg);` +
+    `\n    } catch(__){}` +
+    `\n  }` +
+    `\n  try { (globalThis||{}).__LARP_BUNDLE_ENTERED__ = Date.now(); } catch(__){}` +
+    `\n  __larpShow("[Larp] bundle entered");` +
+    `\n  try {` +
     `\n${stripped}` +
+    `\n  } catch (__larpBundleError) {` +
+    `\n    try { (globalThis||{}).__LARP_BUNDLE_ERROR__ = __larpBundleError; } catch(__){}` +
+    `\n    var __msg = "[Larp BUNDLE THREW] " + ((__larpBundleError && __larpBundleError.message) || String(__larpBundleError));` +
+    `\n    __larpShow(__msg);` +
+    `\n    if (typeof console !== "undefined") console.error("[Larp] bundle threw:", __larpBundleError);` +
+    `\n    module.exports = { default: {` +
+    `\n      onLoad: function(){ __larpShow("[Larp] onLoad noop — bundle had thrown"); },` +
+    `\n      onUnload: function(){},` +
+    `\n      settings: undefined` +
+    `\n    }};` +
+    `\n  }` +
     `\n  return module.exports.default != null ? module.exports.default : module.exports;` +
     `\n})()`
   );
