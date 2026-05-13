@@ -72,12 +72,25 @@
 
   function makeBadgePayload(b) {
     var assetId = null;
-    try { assetId = getAssetIDByName(b.asset); } catch (_) {}
+    try {
+      assetId = getAssetIDByName(b.asset);
+    } catch (_) {}
+    // Discord RN expects numeric `icon` / `source` for built-in assets.
+    // A string asset name + remote URI confused ProfileBadge and caused
+    // render crashes. Match the rain-badge pattern when using CDN.
+    if (assetId != null && typeof assetId === "number") {
+      return {
+        id: "larp-" + b.id,
+        description: b.label,
+        icon: assetId,
+        source: assetId
+      };
+    }
     return {
       id: "larp-" + b.id,
       description: b.label,
-      icon: b.asset,
-      source: assetId != null ? assetId : { uri: b.url }
+      icon: " ",
+      source: { uri: b.url }
     };
   }
 
@@ -102,31 +115,93 @@
     return b;
   }
 
+  /** One Proxy per underlying user object — avoids a new `{}` every Flux tick (that broke useMemo / updateMemo). */
+  var wrapProxyByUser = new WeakMap();
+
+  function shouldSpoofUser(user) {
+    if (!user) return false;
+    var match = normName(storage.matchUsername || "");
+    var replace = (storage.replaceUsername || "").trim();
+    if (!match || !replace) return false;
+    var un = normName(user.username || "");
+    var gn = normName(user.globalName || user.global_name || "");
+    return un === match || gn === match;
+  }
+
+  function buildUserProxy(user) {
+    var prev = wrapProxyByUser.get(user);
+    if (prev) return prev;
+
+    var proxy = new Proxy(user, {
+      get: function (t, p, recv) {
+        if (!shouldSpoofUser(t)) return Reflect.get(t, p, recv);
+        var match = normName(storage.matchUsername || "");
+        var replace = (storage.replaceUsername || "").trim();
+        var un = normName(t.username || "");
+        var gn = normName(t.globalName || t.global_name || "");
+
+        if (p === "username") return replace;
+
+        if (p === "globalName" || p === "global_name") {
+          var orig = Reflect.get(t, p, recv);
+          if (gn === match || un === match) return replace;
+          return orig;
+        }
+
+        // "user#0" style tag shown under display name on mobile
+        if (p === "tag") {
+          var tag = Reflect.get(t, "tag", recv);
+          if (typeof tag === "string") {
+            var hash = tag.indexOf("#");
+            if (hash !== -1) return replace + tag.slice(hash);
+          }
+        }
+
+        return Reflect.get(t, p, recv);
+      },
+      ownKeys: function (t) {
+        return Reflect.ownKeys(t);
+      },
+      getOwnPropertyDescriptor: function (t, p) {
+        if (!shouldSpoofUser(t)) return Reflect.getOwnPropertyDescriptor(t, p);
+        var replace = (storage.replaceUsername || "").trim();
+        if (p === "username") {
+          return {
+            configurable: true,
+            enumerable: true,
+            value: replace
+          };
+        }
+        if (p === "globalName" || p === "global_name") {
+          var gn = normName(t.globalName || t.global_name || "");
+          var un = normName(t.username || "");
+          var match = normName(storage.matchUsername || "");
+          if (gn === match || un === match) {
+            return {
+              configurable: true,
+              enumerable: true,
+              value: replace
+            };
+          }
+        }
+        return Reflect.getOwnPropertyDescriptor(t, p);
+      }
+    });
+    wrapProxyByUser.set(user, proxy);
+    return proxy;
+  }
+
+  function wrap(user) {
+    if (!user) return user;
+    if (!shouldSpoofUser(user)) return user;
+    return buildUserProxy(user);
+  }
+
   function patchUsername() {
     try {
       var UserStore = findByStoreName("UserStore");
       UserStoreRef = UserStore || null;
       if (!UserStore || typeof UserStore.getCurrentUser !== "function") return;
-
-      function wrap(user) {
-        if (!user) return user;
-        var match = normName(storage.matchUsername || "");
-        var replace = (storage.replaceUsername || "").trim();
-        if (!match || !replace) return user;
-        var un = normName(user.username || "");
-        var gn = normName(user.globalName || user.global_name || "");
-        if (un !== match && gn !== match) return user;
-        // Shallow copy (Discord/React often spreads user objects; Proxy breaks that).
-        var out = Object.assign({}, user);
-        out.username = replace;
-        if (gn === match || normName(out.globalName || "") === match) {
-          out.globalName = replace;
-        }
-        if (out.global_name != null && normName(out.global_name) === match) {
-          out.global_name = replace;
-        }
-        return out;
-      }
 
       unpatches.push(after("getCurrentUser", UserStore, function (_args, ret) {
         return wrap(ret);
@@ -156,9 +231,18 @@
         var badgesMap = getBadgesMap();
         var hasAny = false;
         for (var k in badgesMap) {
-          if (badgesMap[k]) { hasAny = true; break; }
+          if (badgesMap[k]) {
+            hasAny = true;
+            break;
+          }
         }
-        if (!hasAny) return ret;
+        if (!hasAny) {
+          // Still strip stale larp-* if toggles were cleared
+          var onlyReal = ret.filter(function (x) {
+            return !x || !x.id || String(x.id).indexOf("larp-") !== 0;
+          });
+          return onlyReal.length === ret.length ? ret : onlyReal;
+        }
 
         var u = args && args[0];
         var uid =
@@ -171,13 +255,18 @@
         var curId = cur && cur.id;
         if (!uid || !curId || String(uid) !== String(curId)) return ret;
 
-        for (var i = BADGES.length - 1; i >= 0; i--) {
+        // CRITICAL: never unshift onto `ret` repeatedly — useBadges runs on
+        // every render; duplicating entries grows the array until React
+        // crashes inside updateMemo.
+        var base = ret.filter(function (x) {
+          return !x || !x.id || String(x.id).indexOf("larp-") !== 0;
+        });
+        var additions = [];
+        for (var i = 0; i < BADGES.length; i++) {
           var b = BADGES[i];
-          if (badgesMap[b.id]) {
-            ret.unshift(makeBadgePayload(b));
-          }
+          if (badgesMap[b.id]) additions.push(makeBadgePayload(b));
         }
-        return ret;
+        return additions.concat(base);
       }
 
       unpatches.push(after(hookKey, mod, badgeHandler));
@@ -193,7 +282,17 @@
     var s = React.useState(0);
     var force = s[1];
 
-    function refresh() { force(function (n) { return n + 1; }); }
+    function refresh() {
+      force(function (n) {
+        return n + 1;
+      });
+      try {
+        var us = findByStoreName("UserStore");
+        if (us && typeof us.emitChange === "function") {
+          us.emitChange();
+        }
+      } catch (_) {}
+    }
 
     var matchValue = storage.matchUsername || "";
     var replaceValue = storage.replaceUsername || "";
