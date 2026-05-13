@@ -1,7 +1,7 @@
 {
   "name": "Larp",
-  "description": "[v9.8] Ordre Nitro+Boost forcé; feuille Level/April Fools; ids larp (fix chargement infini Nitro).",
-  "authors": [{ "name": "hello156165 (v9.8)" }],
+  "description": "[v9.9] Ordre plaque: Nitro|Staff|Partner|Events|Dev|Early|Boost|autres.",
+  "authors": [{ "name": "hello156165 (v9.9)" }],
   "main": "index.js",
   "hash": "REPLACED_AT_BUILD_TIME",
   "vendetta": {

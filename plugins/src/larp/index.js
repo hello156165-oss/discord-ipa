@@ -13,7 +13,7 @@
   "use strict";
 
   /** Bump with releases — visible in toast so you know the phone loaded this build (not an old CDN file). */
-  var LARP_UI_TAG = "v9.8";
+  var LARP_UI_TAG = "v9.9";
 
   // ---------------------------------------------------------------------
   // Resolve runtime APIs from `vendetta` (the arrow parameter Kettu
@@ -384,6 +384,49 @@
     return false;
   }
 
+  /**
+   * Profile badge plate order (stable sort by rank, then original index):
+   * Nitro → Staff → Partner → HypeSquad Events → Active/Verified Dev → Early Supporter → Boost → autres.
+   */
+  function plateRank(b, nitroPayload, boostPayload) {
+    if (!b) return 999;
+    if (isNitroBadgeRow(b, nitroPayload)) return 0;
+
+    var id = String(b.id || "").toLowerCase();
+    var desc = String(b.description || "").toLowerCase();
+
+    if (id === "staff" || id.indexOf("larp-staff") === 0 || desc.indexOf("discord staff") !== -1) {
+      return 10;
+    }
+    if (id.indexOf("larp-partner") === 0 || (id.indexOf("partner") !== -1 && id.indexOf("application_guild") === -1)) {
+      return 20;
+    }
+    if (
+      id.indexOf("larp-hypesquad_events") === 0 ||
+      id === "hypesquad" ||
+      id.indexOf("hypesquad_events") !== -1 ||
+      (desc.indexOf("hypesquad") !== -1 && desc.indexOf("house") === -1 && desc.indexOf("bravery") === -1 && desc.indexOf("brilliance") === -1 && desc.indexOf("balance") === -1)
+    ) {
+      return 30;
+    }
+    if (
+      id.indexOf("larp-active_developer") === 0 ||
+      id.indexOf("larp-verified_developer") === 0 ||
+      id.indexOf("active_developer") !== -1 ||
+      id.indexOf("verified_developer") !== -1 ||
+      desc.indexOf("active developer") !== -1 ||
+      desc.indexOf("early verified bot") !== -1
+    ) {
+      return 40;
+    }
+    if (id.indexOf("larp-early_supporter") === 0 || id.indexOf("early_supporter") !== -1 || desc.indexOf("early supporter") !== -1) {
+      return 50;
+    }
+    if (isBoostBadgeRow(b, boostPayload)) return 60;
+
+    return 100;
+  }
+
   // ---------------------------------------------------------------------
   // Patches (applied in onLoad, released in onUnload).
   // ---------------------------------------------------------------------
@@ -572,16 +615,21 @@
         if (nitroPayload) lead.push(nitroPayload);
         if (boostPayload) lead.push(boostPayload);
         var merged = lead.concat(base3).concat(otherAdditions);
-        var nitroBucket = [];
-        var boostBucket = [];
-        var restBucket = [];
+        var annotated = [];
         for (var mj = 0; mj < merged.length; mj++) {
-          var bb = merged[mj];
-          if (isNitroBadgeRow(bb, nitroPayload)) nitroBucket.push(bb);
-          else if (isBoostBadgeRow(bb, boostPayload)) boostBucket.push(bb);
-          else restBucket.push(bb);
+          annotated.push({ row: merged[mj], ord: mj });
         }
-        return nitroBucket.concat(boostBucket).concat(restBucket);
+        annotated.sort(function (a, b) {
+          var ra = plateRank(a.row, nitroPayload, boostPayload);
+          var rb = plateRank(b.row, nitroPayload, boostPayload);
+          if (ra !== rb) return ra - rb;
+          return a.ord - b.ord;
+        });
+        var sorted = [];
+        for (var sj = 0; sj < annotated.length; sj++) {
+          sorted.push(annotated[sj].row);
+        }
+        return sorted;
       }
 
       unpatches.push(after(hookKey, mod, badgeHandler));
