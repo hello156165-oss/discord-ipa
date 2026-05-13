@@ -281,7 +281,8 @@
           var b = BADGES[i];
           if (badgesMap[b.id]) additions.push(makeBadgePayload(b));
         }
-        return additions.concat(base);
+        // Append after Discord's own badges (Nitro, Hypesquad from account, etc.)
+        return base.concat(additions);
       }
 
       unpatches.push(after(hookKey, mod, badgeHandler));
