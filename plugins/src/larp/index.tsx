@@ -19,7 +19,7 @@ import { applyDefaults, type LarpStorage } from "./storage";
  * really being evaluated and that `onLoad` runs to completion.
  */
 
-const LARP_VERSION = "v6-trycatch";
+const LARP_VERSION = "v7-marker";
 
 declare const vendetta: {
   plugin?: {
