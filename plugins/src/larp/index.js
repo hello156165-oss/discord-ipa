@@ -13,7 +13,7 @@
   "use strict";
 
   /** Bump with releases — visible in toast so you know the phone loaded this build (not an old CDN file). */
-  var LARP_UI_TAG = "v9.6";
+  var LARP_UI_TAG = "v9.7";
 
   // ---------------------------------------------------------------------
   // Resolve runtime APIs from `vendetta` (the arrow parameter Kettu
@@ -130,6 +130,28 @@
     { id: "quest",                   label: "Completed a Quest",        asset: "QuestBadge",                       url: CDN + "/7d9ae358c8c5e118768335dbe68b4fb8.png" }
   ];
 
+  /**
+   * Discord routes badge taps by public id. Using the same ids as the real
+   * Nitro / Boost rows opens "Your Nitro Home" / milestones instead of a
+   * generic larp-* tooltip (XYZenix gist / client names).
+   */
+  var NATIVE_PUBLIC_ID_BY_LARP = {
+    premium: "premium",
+    premium_tenure_3_month: "premium_tenure_3_month_v2",
+    premium_tenure_6_month: "premium_tenure_6_month_v2",
+    premium_tenure_12_month: "premium_tenure_12_month_v2",
+    premium_tenure_24_month: "premium_tenure_24_month_v2",
+    premium_tenure_emerald: "premium_tenure_36_month_v2",
+    premium_tenure_ruby: "premium_tenure_60_month_v2",
+    premium_tenure_opal: "premium_tenure_72_month_v2",
+    guild_boost_12: "guild_booster_lvl6",
+    guild_boost_24: "guild_booster_lvl9"
+  };
+
+  /** CDN icon hashes — hide by asset even when id/description don't say "quest". */
+  var QUEST_BADGE_ICON_HASH = "7d9ae358c8c5e118768335dbe68b4fb8";
+  var ORB_BADGE_ICON_HASH = "83d8a1eb09a8d64e59233eec5d4d5c2d";
+
   /** Highest wins when several Nitro rows are toggled on. */
   var NITRO_LARP_ORDER = [
     "premium_tenure_opal",
@@ -154,11 +176,12 @@
     BOOST_LARP_SET[BOOST_LARP_ORDER[_bi0]] = true;
   }
 
-  /** CDN + label for each synthetic badge id (used by JSX hook below). */
+  /** CDN + label keyed by public badge id (native id or larp-*) for JSX hook. */
   var LARP_BADGE_META = {};
   for (var _bi = 0; _bi < BADGES.length; _bi++) {
     var _bb = BADGES[_bi];
-    LARP_BADGE_META["larp-" + _bb.id] = { uri: _bb.url, label: _bb.label };
+    var _pub = NATIVE_PUBLIC_ID_BY_LARP[_bb.id] || "larp-" + _bb.id;
+    LARP_BADGE_META[_pub] = { uri: _bb.url, label: _bb.label };
   }
 
   function collectAssetNames(b) {
@@ -190,17 +213,18 @@
   }
 
   function makeBadgePayload(b) {
+    var pubId = NATIVE_PUBLIC_ID_BY_LARP[b.id] || "larp-" + b.id;
     var assetNum = firstResolvedAsset(collectAssetNames(b));
     if (assetNum != null) {
       return {
-        id: "larp-" + b.id,
+        id: pubId,
         description: b.label,
         icon: assetNum,
         source: assetNum
       };
     }
     return {
-      id: "larp-" + b.id,
+      id: pubId,
       description: b.label,
       icon: " "
     };
@@ -232,6 +256,35 @@
     return c;
   }
 
+  function badgeHaystack(b) {
+    if (!b) return "";
+    var bits = [
+      String(b.id || ""),
+      String(b.description || ""),
+      String(b.tooltip || ""),
+      String(b.icon != null ? b.icon : "")
+    ];
+    try {
+      if (b.link != null) bits.push(JSON.stringify(b.link));
+    } catch (_e0) {}
+    try {
+      if (b.source != null) bits.push(JSON.stringify(b.source));
+    } catch (_e1) {}
+    return bits.join("\n").toLowerCase();
+  }
+
+  function iconMatchesAssetName(b, names) {
+    if (!b || b.icon == null) return false;
+    var ic = String(b.icon);
+    for (var _im = 0; _im < names.length; _im++) {
+      try {
+        var aid = getAssetIDByName(names[_im]);
+        if (aid != null && String(aid) === ic) return true;
+      } catch (_e2) {}
+    }
+    return false;
+  }
+
   /** Hide ugly / unwanted real badges on your own profile (client-only). */
   function shouldHideNativeBadge(b) {
     if (!b) return false;
@@ -239,16 +292,37 @@
     var h = storage.hideNative || {};
     var id = String(b.id || "").toLowerCase();
     var desc = String(b.description || b.tooltip || "").toLowerCase();
-    if (h.quest && (id.indexOf("quest") !== -1 || desc.indexOf("quest") !== -1)) {
-      return true;
+    var hay = badgeHaystack(b);
+
+    if (h.quest) {
+      if (id.indexOf("quest") !== -1 || desc.indexOf("quest") !== -1) return true;
+      if (hay.indexOf(QUEST_BADGE_ICON_HASH) !== -1) return true;
+      if (
+        iconMatchesAssetName(b, [
+          "QuestBadge",
+          "QuestCompletedBadge",
+          "QuestCompletedProfileBadge",
+          "ProfileQuestBadge"
+        ])
+      ) {
+        return true;
+      }
     }
-    if (
-      h.orb &&
-      (id.indexOf("orb") !== -1 ||
-        desc.indexOf("orb profile") !== -1 ||
-        desc.indexOf("collected the orb") !== -1)
-    ) {
-      return true;
+    if (h.orb) {
+      if (id.indexOf("orb") !== -1 || desc.indexOf("orb profile") !== -1 || desc.indexOf("collected the orb") !== -1) {
+        return true;
+      }
+      if (hay.indexOf(ORB_BADGE_ICON_HASH) !== -1) return true;
+      if (
+        iconMatchesAssetName(b, [
+          "OrbProfileBadge",
+          "CollectedOrbProfileBadge",
+          "ProfileOrbBadge",
+          "OrbBadge"
+        ])
+      ) {
+        return true;
+      }
     }
     if (
       h.legacyUsername &&
@@ -473,15 +547,27 @@
           return !shouldHideNativeBadge(x);
         });
 
-        var additions = [];
+        var nitroPayload = null;
+        var boostPayload = null;
+        var otherAdditions = [];
         for (var i = 0; i < BADGES.length; i++) {
           var b = BADGES[i];
           if (!badgesMap[b.id]) continue;
           if (NITRO_LARP_SET[b.id] && b.id !== nitroPick) continue;
           if (BOOST_LARP_SET[b.id] && b.id !== boostPick) continue;
-          additions.push(makeBadgePayload(b));
+          var row = makeBadgePayload(b);
+          if (nitroPick != null && b.id === nitroPick) {
+            nitroPayload = row;
+          } else if (boostPick != null && b.id === boostPick) {
+            boostPayload = row;
+          } else {
+            otherAdditions.push(row);
+          }
         }
-        return base3.concat(additions);
+        var lead = [];
+        if (nitroPayload) lead.push(nitroPayload);
+        if (boostPayload) lead.push(boostPayload);
+        return lead.concat(base3).concat(otherAdditions);
       }
 
       unpatches.push(after(hookKey, mod, badgeHandler));
@@ -507,7 +593,7 @@
         var n = Type.displayName || Type.name;
         if (n !== "ProfileBadge" && n !== "RenderedBadge") return ret;
         var id = ret.props.id;
-        if (typeof id !== "string" || id.indexOf("larp-") !== 0) return ret;
+        if (typeof id !== "string") return ret;
         var meta = LARP_BADGE_META[id];
         if (!meta) return ret;
         ret.props.source = { uri: meta.uri };
@@ -676,7 +762,7 @@
       }, "Masquer des badges (profil local)"),
       React.createElement(Text, {
         style: { color: "#949ba4", fontSize: 11, marginBottom: 8, lineHeight: 15 }
-      }, "Retire des badges Discord réels sur ta vue seulement (ex. Quest, feuille Orb). Les ids partiels s’appliquent au champ id du badge."),
+      }, "Retire des badges Discord réels sur ta vue (Quest / Orb : détection aussi par icône Discord, pas seulement le texte « quest »). Ids partiels = sous-chaîne dans l’id du badge."),
 
       hideToggle("quest", "Masquer badge Quest"),
       hideToggle("orb", "Masquer badge Orb (feuille)"),

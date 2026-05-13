@@ -1,7 +1,7 @@
 {
   "name": "Larp",
-  "description": "[v9.6] Nitro tiers PNG (Emerald/Ruby/Opal); Boost 12/24 replace; hide Quest/Orb; spoof @ only.",
-  "authors": [{ "name": "hello156165 (v9.6)" }],
+  "description": "[v9.7] Nitro/Boost à gauche + ids natifs (tap = Nitro Home); masquer Quest/Orb par asset; PNG tiers.",
+  "authors": [{ "name": "hello156165 (v9.7)" }],
   "main": "index.js",
   "hash": "REPLACED_AT_BUILD_TIME",
   "vendetta": {
