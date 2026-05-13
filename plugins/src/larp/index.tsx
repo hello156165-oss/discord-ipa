@@ -11,17 +11,13 @@ import { applyDefaults, type LarpStorage } from "./storage";
  *
  * Kettu evaluates this file with the wrapper
  *   `vendetta => { return <THIS FILE> }`
- * and then calls the resulting arrow with a freshly built `vendetta` object,
- * so `vendetta` is in scope here even though we never reference it directly.
+ * and then calls the resulting arrow with a freshly built `vendetta` object.
+ * `vendetta.plugin.storage` is a per-plugin MMKV-backed proxy.
  *
- * The build pipeline (plugins/build.mjs) ensures the final JS is a single
- * expression that yields the plugin instance via `module.exports.default`.
- *
- * We use `window.bunny` (which Kettu exposes globally) for the patcher,
- * metro lookups and the settings section registration: those APIs are richer
- * and identical to what built-in core plugins use. The only thing we pull
- * from `vendetta` is the per-plugin scoped storage, since `window.bunny.plugin`
- * is not populated for Vendetta-format plugins.
+ * We use `window.bunny` (globally available) for the patcher, metro lookups
+ * and the settings section registration. The only thing we pull from
+ * `vendetta` is the scoped storage, since `window.bunny.plugin` is not
+ * populated for plugins loaded through the Vendetta loader.
  */
 
 declare const vendetta: {
@@ -31,73 +27,94 @@ declare const vendetta: {
   logger?: { log: (...a: unknown[]) => void; error: (...a: unknown[]) => void };
 };
 
+const log = (...args: unknown[]) => {
+  try {
+    if (vendetta?.logger?.log) vendetta.logger.log(...args);
+    else console.log("[Larp]", ...args);
+  } catch {
+    /* swallow */
+  }
+};
+const logError = (...args: unknown[]) => {
+  try {
+    if (vendetta?.logger?.error) vendetta.logger.error(...args);
+    else console.error("[Larp]", ...args);
+  } catch {
+    /* swallow */
+  }
+};
+
 // Cleanup handles assigned in `onLoad` and released in `onUnload`.
 let unpatches: Array<() => void> = [];
 let unregisterSettingsSection: (() => void) | null = null;
 
+/**
+ * Always-defined component shown as the plugin's settings sheet AND the
+ * Discord-settings tab. Built with createElement so we don't depend on a
+ * JSX runtime resolving correctly in Kettu's eval context.
+ */
 function SettingsHost(): JSX.Element {
-  return <LarpSettings storage={vendetta.plugin.storage as LarpStorage} />;
+  const storage =
+    (vendetta?.plugin?.storage as LarpStorage | undefined) ??
+    (Object.create(null) as LarpStorage);
+  return React.createElement(LarpSettings, { storage });
 }
 
-const log = (...args: unknown[]) => {
-  if (vendetta?.logger?.log) vendetta.logger.log(...args);
-  else console.log("[Larp]", ...args);
-};
-const logError = (...args: unknown[]) => {
-  if (vendetta?.logger?.error) vendetta.logger.error(...args);
-  else console.error("[Larp]", ...args);
-};
-
 export default {
-  /**
-   * Called by Kettu after the plugin's JS has been evaluated and the storage
-   * object has been hydrated. We:
-   *   1. seed missing defaults on the storage proxy,
-   *   2. install our patches (user, badges, creation date),
-   *   3. register a dedicated section in the Discord settings menu.
-   */
   onLoad() {
-    const storage = vendetta.plugin.storage as LarpStorage;
-    applyDefaults(storage);
-    log("starting");
-
     try {
-      unpatches.push(patchCurrentUser(storage));
-      unpatches.push(patchBadges(storage));
-      unpatches.push(patchCreationDate(storage));
-    } catch (err) {
-      logError("failed to install one of the patches", err);
-    }
+      const storage = vendetta?.plugin?.storage as LarpStorage | undefined;
+      if (storage) applyDefaults(storage);
+      log("starting");
 
-    try {
-      unregisterSettingsSection = bunny.ui.settings.registerSection({
-        name: "Larp",
-        items: [
-          {
-            key: "LARP_TAB",
-            title: () => "Larp",
-            icon: bunny.api.assets.findAssetId("MaskIcon")
-              ? undefined
-              : undefined,
-            render: () =>
-              Promise.resolve({
-                default: SettingsHost as React.ComponentType,
-              }),
-          },
-        ],
-      });
-    } catch (err) {
-      logError("failed to register settings section", err);
-    }
+      try {
+        if (storage) unpatches.push(patchCurrentUser(storage));
+      } catch (err) {
+        logError("patchCurrentUser failed", err);
+      }
+      try {
+        if (storage) unpatches.push(patchBadges(storage));
+      } catch (err) {
+        logError("patchBadges failed", err);
+      }
+      try {
+        if (storage) unpatches.push(patchCreationDate(storage));
+      } catch (err) {
+        logError("patchCreationDate failed", err);
+      }
 
-    log("ready");
+      // Register a dedicated section in the Discord settings menu.
+      try {
+        const reg = (bunny as any)?.ui?.settings?.registerSection;
+        if (typeof reg === "function") {
+          unregisterSettingsSection = reg({
+            name: "Larp",
+            items: [
+              {
+                key: "LARP_TAB",
+                title: () => "Larp",
+                render: () =>
+                  Promise.resolve({
+                    default: SettingsHost as React.ComponentType,
+                  }),
+              },
+            ],
+          });
+        } else {
+          logError(
+            "bunny.ui.settings.registerSection not available, skipping tab registration"
+          );
+        }
+      } catch (err) {
+        logError("failed to register settings section", err);
+      }
+
+      log("ready");
+    } catch (err) {
+      logError("onLoad threw at top level", err);
+    }
   },
 
-  /**
-   * Called by Kettu when the user disables the plugin or hot-reloads it.
-   * Tear patches down FIRST so that any UI re-render that happens during
-   * the section unregister sees the original Discord behavior again.
-   */
   onUnload() {
     log("stopping");
     for (const u of unpatches) {
@@ -119,10 +136,5 @@ export default {
     }
   },
 
-  /**
-   * Vendetta surfaces this as the plugin's "Settings" sheet, accessible
-   * from the plugin's row in the Plugins list. Same component as the
-   * dedicated tab we register in `onLoad`.
-   */
   settings: SettingsHost,
 };
