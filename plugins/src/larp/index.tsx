@@ -7,32 +7,73 @@ import LarpSettings from "./settings";
 import { applyDefaults, type LarpStorage } from "./storage";
 
 /**
- * Vendetta plugin entry.
+ * Vendetta plugin entry — diagnostic build.
  *
  * Kettu evaluates this file with the wrapper
  *   `vendetta => { return <THIS FILE> }`
  * and then calls the resulting arrow with a freshly built `vendetta` object.
- * `vendetta.plugin.storage` is a per-plugin MMKV-backed proxy.
  *
- * We use `window.bunny` (globally available) for the patcher, metro lookups
- * and the settings section registration. The only thing we pull from
- * `vendetta` is the scoped storage, since `window.bunny.plugin` is not
- * populated for plugins loaded through the Vendetta loader.
+ * This build is intentionally loud: it raises a toast at every stage of
+ * loading so we can verify, from the user-facing UI, that the plugin is
+ * really being evaluated and that `onLoad` runs to completion.
  */
 
+const LARP_VERSION = "v3-diagnostic";
+
 declare const vendetta: {
-  plugin: {
-    storage: LarpStorage & Record<string, unknown>;
+  plugin?: {
+    id?: string;
+    storage?: LarpStorage & Record<string, unknown>;
+  };
+  api?: {
+    toasts?: { showToast: (msg: string, asset?: number) => void };
+    assets?: { getAssetIDByName?: (name: string) => number | undefined };
   };
   logger?: { log: (...a: unknown[]) => void; error: (...a: unknown[]) => void };
 };
+
+/**
+ * Best-effort toast. Tries `vendetta.api.toasts` first, then `bunny.api.toasts`,
+ * and finally falls back to console. Never throws.
+ */
+function toast(msg: string, kind: "info" | "warn" | "error" = "info") {
+  try {
+    const assetName =
+      kind === "error"
+        ? "CircleXIcon-primary"
+        : kind === "warn"
+          ? "WarningIcon"
+          : "CheckmarkSmallIcon";
+
+    const getAssetId =
+      vendetta?.api?.assets?.getAssetIDByName ??
+      ((globalThis as any).bunny?.api?.assets?.getAssetIDByName as
+        | ((name: string) => number | undefined)
+        | undefined);
+    const assetId = getAssetId ? getAssetId(assetName) : undefined;
+
+    const show =
+      vendetta?.api?.toasts?.showToast ??
+      ((globalThis as any).bunny?.api?.toasts?.showToast as
+        | ((m: string, a?: number) => void)
+        | undefined);
+
+    if (show) {
+      show(`[Larp ${LARP_VERSION}] ${msg}`, assetId);
+    } else {
+      console.log(`[Larp ${LARP_VERSION}] toast unavailable: ${msg}`);
+    }
+  } catch {
+    // never throw from diagnostic code
+  }
+}
 
 const log = (...args: unknown[]) => {
   try {
     if (vendetta?.logger?.log) vendetta.logger.log(...args);
     else console.log("[Larp]", ...args);
   } catch {
-    /* swallow */
+    // swallow
   }
 };
 const logError = (...args: unknown[]) => {
@@ -40,9 +81,36 @@ const logError = (...args: unknown[]) => {
     if (vendetta?.logger?.error) vendetta.logger.error(...args);
     else console.error("[Larp]", ...args);
   } catch {
-    /* swallow */
+    // swallow
   }
 };
+
+// ---------------------------------------------------------------------------
+// Module-level diagnostic flag. Set BEFORE we register anything else so even
+// if the rest of the module explodes we still know it was reached.
+// ---------------------------------------------------------------------------
+type LarpDiag = {
+  version: string;
+  moduleLoadedAt: number;
+  onLoadStartedAt?: number;
+  onLoadFinishedAt?: number;
+  onLoadError?: string;
+  settingsRendered: number;
+  hasSettingsExport: boolean;
+};
+
+const diag: LarpDiag = {
+  version: LARP_VERSION,
+  moduleLoadedAt: Date.now(),
+  settingsRendered: 0,
+  hasSettingsExport: false,
+};
+
+try {
+  (globalThis as any).__LARP__ = diag;
+} catch {
+  // ignored
+}
 
 // Cleanup handles assigned in `onLoad` and released in `onUnload`.
 let unpatches: Array<() => void> = [];
@@ -54,38 +122,48 @@ let unregisterSettingsSection: (() => void) | null = null;
  * JSX runtime resolving correctly in Kettu's eval context.
  */
 function SettingsHost(): JSX.Element {
+  diag.settingsRendered += 1;
   const storage =
     (vendetta?.plugin?.storage as LarpStorage | undefined) ??
     (Object.create(null) as LarpStorage);
-  return React.createElement(LarpSettings, { storage });
+  return React.createElement(LarpSettings, {
+    storage,
+    diagVersion: LARP_VERSION,
+  } as any);
 }
 
-export default {
+const pluginDefault = {
   onLoad() {
+    diag.onLoadStartedAt = Date.now();
+    toast("module evaluated, onLoad running");
+    log("starting", LARP_VERSION);
+
     try {
       const storage = vendetta?.plugin?.storage as LarpStorage | undefined;
       if (storage) applyDefaults(storage);
-      log("starting");
 
       try {
         if (storage) unpatches.push(patchCurrentUser(storage));
       } catch (err) {
         logError("patchCurrentUser failed", err);
+        toast(`patchCurrentUser failed: ${String(err)}`, "warn");
       }
       try {
         if (storage) unpatches.push(patchBadges(storage));
       } catch (err) {
         logError("patchBadges failed", err);
+        toast(`patchBadges failed: ${String(err)}`, "warn");
       }
       try {
         if (storage) unpatches.push(patchCreationDate(storage));
       } catch (err) {
         logError("patchCreationDate failed", err);
+        toast(`patchCreationDate failed: ${String(err)}`, "warn");
       }
 
-      // Register a dedicated section in the Discord settings menu.
+      // Try to register a dedicated section in the Discord settings menu.
       try {
-        const reg = (bunny as any)?.ui?.settings?.registerSection;
+        const reg = (globalThis as any).bunny?.ui?.settings?.registerSection;
         if (typeof reg === "function") {
           unregisterSettingsSection = reg({
             name: "Larp",
@@ -107,11 +185,17 @@ export default {
         }
       } catch (err) {
         logError("failed to register settings section", err);
+        toast(`registerSection failed: ${String(err)}`, "warn");
       }
 
+      diag.onLoadFinishedAt = Date.now();
+      diag.hasSettingsExport = true;
       log("ready");
+      toast("onLoad finished — tap Configure now");
     } catch (err) {
+      diag.onLoadError = String(err);
       logError("onLoad threw at top level", err);
+      toast(`onLoad threw: ${String(err)}`, "error");
     }
   },
 
@@ -138,3 +222,16 @@ export default {
 
   settings: SettingsHost,
 };
+
+// Diagnostic: confirm we built a valid default export object before returning.
+try {
+  diag.hasSettingsExport = typeof pluginDefault.settings === "function";
+} catch {
+  // ignored
+}
+
+// Toast immediately upon module evaluation. If this never appears in-app,
+// the bundle isn't being fetched / evaluated.
+toast(`module loaded, settings type=${typeof pluginDefault.settings}`);
+
+export default pluginDefault;

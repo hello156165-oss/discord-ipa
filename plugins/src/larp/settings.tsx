@@ -5,6 +5,7 @@ import type { LarpStorage } from "./storage";
 
 interface Props {
   storage: LarpStorage;
+  diagVersion?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -189,7 +190,7 @@ function safeDateInputValue(iso: string): string {
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
-function LarpSettingsInner({ storage }: Props): JSX.Element {
+function LarpSettingsInner({ storage, diagVersion }: Props): JSX.Element {
   const C = pickComponents();
   const { state, patch } = useLarpState(storage);
 
@@ -212,7 +213,7 @@ function LarpSettingsInner({ storage }: Props): JSX.Element {
         React.createElement(
           C.Text,
           { style: { color: "#dbdee1" } },
-          "Larp loaded — overrides below are local only."
+          `Larp loaded${diagVersion ? ` (${diagVersion})` : ""} — overrides below are local only.`
         )
       ),
 
