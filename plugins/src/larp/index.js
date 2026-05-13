@@ -45,6 +45,11 @@
   // fallback if the local asset can't be found.
   // ---------------------------------------------------------------------
   var CDN = "https://cdn.discordapp.com/badge-icons";
+  /** Official Discord SVGs for evolved Nitro tiers (mezotv/discord-badges README). */
+  var SVG_EMERALD = "https://discord.com/assets/f2b9b02fb22cc6459922.svg";
+  var SVG_RUBY = "https://discord.com/assets/ecf86e18838013c9d95a.svg";
+  var SVG_OPAL = "https://discord.com/assets/b4fc7a9c37ec2fae36e3.svg";
+
   var BADGES = [
     { id: "staff",                   label: "Discord Staff",            asset: "StaffBadge",                       url: CDN + "/5e74e9b61934fc1f67c65515d1f7e60d.png" },
     { id: "partner",                 label: "Discord Partner",          asset: "DiscordPartnerBadge",              url: CDN + "/3f9748e53446a137a052f3454e2de41e.png" },
@@ -58,17 +63,57 @@
     { id: "active_developer",        label: "Active Developer",         asset: "ActiveDeveloperBadge",             url: CDN + "/6bdc42827a38498929a4920da12695d9.png" },
     { id: "verified_developer",      label: "Early Verified Bot Dev",   asset: "VerifiedDeveloperBadge",           url: CDN + "/6df5892e0f35b051f8b61eace34f4967.png" },
     { id: "early_supporter",         label: "Early Supporter",          asset: "EarlySupporterBadge",              url: CDN + "/7060786766c9c840eb3019e725d2b358.png" },
-    { id: "premium",                 label: "Discord Nitro",            asset: "NitroSubscriberBadge",             url: CDN + "/2ba85e8026a8614b640c2837bcdfe21b.png" },
-    { id: "premium_tenure_3_month",  label: "Nitro · 3 months",         asset: "NitroBronzeBadge",                 url: CDN + "/6de6d34650760ba5551a79732e98ed60.png" },
-    { id: "premium_tenure_6_month",  label: "Nitro · 6 months",         asset: "NitroSilverBadge",                 url: CDN + "/6de6d34650760ba5551a79732e98ed60.png" },
-    { id: "premium_tenure_12_month", label: "Nitro · 1 year",           asset: "NitroGoldBadge",                   url: CDN + "/d92998916f4ce6f74de7da0a37b8d740.png" },
-    { id: "premium_tenure_24_month", label: "Nitro · 2 years",          asset: "NitroPlatinumBadge",               url: CDN + "/9d4f73ca6df09bc63a39ea84d5fd0ff5.png" },
-    { id: "premium_tenure_36_month", label: "Nitro · 3 years",          asset: "NitroDiamondBadge",                url: CDN + "/65d6d6df9d56b8c3f4b3b1f3e4f3a0c8.png" },
+    {
+      id: "premium",
+      label: "Discord Nitro (icône générique)",
+      assetCandidates: ["NitroSubscriberBadge", "NitroSubscriber", "PremiumSubscriberBadge", "SubscriberBadge"],
+      url: CDN + "/2ba85e8026a8614b640c2837bcdfe21b.png"
+    },
+    { id: "premium_tenure_3_month",  label: "Nitro · ~3 mo (bronze)",   assetCandidates: ["NitroBronzeBadge", "NitroBronze", "premium_tenure_03_month_v2"], url: CDN + "/6de6d34650760ba5551a79732e98ed60.png" },
+    { id: "premium_tenure_6_month",  label: "Nitro · ~6 mo (argent)",   assetCandidates: ["NitroSilverBadge", "NitroSilver", "premium_tenure_06_month_v2"], url: CDN + "/6de6d34650760ba5551a79732e98ed60.png" },
+    { id: "premium_tenure_12_month", label: "Nitro · ~12 mo (or)",      assetCandidates: ["NitroGoldBadge", "NitroGold", "premium_tenure_12_month_v2"], url: CDN + "/d92998916f4ce6f74de7da0a37b8d740.png" },
+    { id: "premium_tenure_24_month", label: "Nitro · ~24 mo (platine)", assetCandidates: ["NitroPlatinumBadge", "NitroPlatinum", "premium_tenure_24_month_v2"], url: CDN + "/9d4f73ca6df09bc63a39ea84d5fd0ff5.png" },
+    { id: "premium_tenure_36_month", label: "Nitro · ~36 mo (diamant)", assetCandidates: ["NitroDiamondBadge", "NitroDiamond", "premium_tenure_36_month_v2"], url: CDN + "/65d6d6df9d56b8c3f4b3b1f3e4f3a0c8.png" },
+    {
+      id: "premium_tenure_emerald",
+      label: "Nitro · Emerald (36 mo)",
+      assetCandidates: ["NitroEmeraldBadge", "NitroEmerald", "EmeraldNitroBadge", "premium_tenure_36_month_v2"],
+      url: SVG_EMERALD
+    },
+    {
+      id: "premium_tenure_ruby",
+      label: "Nitro · Ruby (60 mo)",
+      assetCandidates: ["NitroRubyBadge", "NitroRuby", "RubyNitroBadge", "premium_tenure_60_month_v2"],
+      url: SVG_RUBY
+    },
+    {
+      id: "premium_tenure_opal",
+      label: "Nitro · Opal (72+ mo)",
+      assetCandidates: ["NitroOpalBadge", "NitroOpal", "NitroFireBadge", "FireNitroBadge", "premium_tenure_72_month_v2"],
+      url: SVG_OPAL
+    },
     { id: "bot_commands",            label: "Supports Commands",        asset: "BotCommandsBadge",                 url: CDN + "/6f9e37f9029ff57aef81db857890005e.png" },
     { id: "automod",                 label: "Uses AutoMod",             asset: "AutoModBadge",                     url: CDN + "/f2459b691ac7453ed6039bbcfaccbfcd.png" },
     { id: "legacy_username",         label: "Originally Known As",      asset: "LegacyUsernameBadge",              url: CDN + "/6de6d34650760ba5551a79732e98ed60.png" },
     { id: "quest",                   label: "Completed a Quest",        asset: "QuestBadge",                       url: CDN + "/7d9ae358c8c5e118768335dbe68b4fb8.png" }
   ];
+
+  /** Highest wins when several Nitro rows are toggled on. */
+  var NITRO_LARP_ORDER = [
+    "premium_tenure_opal",
+    "premium_tenure_ruby",
+    "premium_tenure_emerald",
+    "premium_tenure_36_month",
+    "premium_tenure_24_month",
+    "premium_tenure_12_month",
+    "premium_tenure_6_month",
+    "premium_tenure_3_month",
+    "premium"
+  ];
+  var NITRO_LARP_SET = {};
+  for (var _ni = 0; _ni < NITRO_LARP_ORDER.length; _ni++) {
+    NITRO_LARP_SET[NITRO_LARP_ORDER[_ni]] = true;
+  }
 
   /** CDN + label for each synthetic badge id (used by JSX hook below). */
   var LARP_BADGE_META = {};
@@ -77,36 +122,95 @@
     LARP_BADGE_META["larp-" + _bb.id] = { uri: _bb.url, label: _bb.label };
   }
 
-  function makeBadgePayload(b) {
-    var assetId = null;
-    try {
-      assetId = getAssetIDByName(b.asset);
-    } catch (_) {}
-    // Built-in asset id → Discord resolves icon itself.
-    if (assetId != null) {
-      var num =
-        typeof assetId === "number"
-          ? assetId
-          : typeof assetId === "string"
-            ? parseInt(assetId, 10)
-            : NaN;
-      if (!isNaN(num) && isFinite(num)) {
-        return {
-          id: "larp-" + b.id,
-          description: b.label,
-          icon: num,
-          source: num
-        };
+  function collectAssetNames(b) {
+    var out = [];
+    if (b.assetCandidates) {
+      for (var _ci = 0; _ci < b.assetCandidates.length; _ci++) {
+        out.push(b.assetCandidates[_ci]);
       }
     }
-    // Remote PNG: the useBadges array alone is NOT enough on iOS — Kettu's
-    // rain-badges plugin injects `source` in a ProfileBadge / RenderedBadge
-    // jsx hook. We do the same in patchBadgeIconsViaJsx().
+    if (b.asset) out.push(b.asset);
+    return out;
+  }
+
+  function firstResolvedAsset(names) {
+    if (!names || !names.length) return null;
+    for (var _ai = 0; _ai < names.length; _ai++) {
+      try {
+        var _id = getAssetIDByName(names[_ai]);
+        var _num =
+          typeof _id === "number"
+            ? _id
+            : typeof _id === "string"
+              ? parseInt(_id, 10)
+              : NaN;
+        if (!isNaN(_num) && isFinite(_num)) return _num;
+      } catch (_e) {}
+    }
+    return null;
+  }
+
+  function makeBadgePayload(b) {
+    var assetNum = firstResolvedAsset(collectAssetNames(b));
+    if (assetNum != null) {
+      return {
+        id: "larp-" + b.id,
+        description: b.label,
+        icon: assetNum,
+        source: assetNum
+      };
+    }
     return {
       id: "larp-" + b.id,
       description: b.label,
       icon: " "
     };
+  }
+
+  function getEnabledNitroLarpId() {
+    var bm = getBadgesMap();
+    for (var _ti = 0; _ti < NITRO_LARP_ORDER.length; _ti++) {
+      var tid = NITRO_LARP_ORDER[_ti];
+      if (bm[tid]) return tid;
+    }
+    return null;
+  }
+
+  function isGuildBoostBadge(b) {
+    if (!b) return false;
+    var id = String(b.id || "").toLowerCase();
+    var desc = String(b.description || "").toLowerCase();
+    if (id.indexOf("guild_booster") !== -1) return true;
+    if (id.indexOf("premium_guild") !== -1) return true;
+    if (desc.indexOf("server boost") !== -1) return true;
+    if (desc.indexOf("guild boost") !== -1) return true;
+    if (desc.indexOf("boosting") !== -1 && desc.indexOf("nitro") === -1) return true;
+    return false;
+  }
+
+  /** True for Discord's real Nitro / tenure gems (not our larp- rows). */
+  function isNativeNitroLike(b) {
+    if (!b) return false;
+    if (String(b.id || "").indexOf("larp-") === 0) return false;
+    if (isGuildBoostBadge(b)) return false;
+    var id = String(b.id || "").toLowerCase();
+    var desc = String(b.description || "").toLowerCase();
+    if (id.indexOf("nitro") !== -1 && id.indexOf("guild") === -1) return true;
+    if (id.indexOf("premium") !== -1 && id.indexOf("guild") === -1) return true;
+    if (id.indexOf("subscriber") !== -1 && desc.indexOf("nitro") !== -1) return true;
+    if (desc.indexOf("discord nitro") !== -1) return true;
+    if (desc.indexOf("nitro") !== -1 && /subscriber|since|month|year|tenure|bronze|silver|gold|platinum|diamond|emerald|ruby|opal|classic|basic/i.test(desc)) {
+      return true;
+    }
+    return false;
+  }
+
+  function nativeNitroCount(arr) {
+    var c = 0;
+    for (var _nj = 0; _nj < arr.length; _nj++) {
+      if (isNativeNitroLike(arr[_nj])) c++;
+    }
+    return c;
   }
 
   // ---------------------------------------------------------------------
@@ -276,13 +380,24 @@
         var base = ret.filter(function (x) {
           return !x || !x.id || String(x.id).indexOf("larp-") !== 0;
         });
+
+        var nitroPick = getEnabledNitroLarpId();
+        var hasRealNitro = nativeNitroCount(base) > 0;
+        var stripNativeNitro = nitroPick != null && hasRealNitro;
+        var base2 = stripNativeNitro
+          ? base.filter(function (x) {
+              return !isNativeNitroLike(x);
+            })
+          : base;
+
         var additions = [];
         for (var i = 0; i < BADGES.length; i++) {
           var b = BADGES[i];
-          if (badgesMap[b.id]) additions.push(makeBadgePayload(b));
+          if (!badgesMap[b.id]) continue;
+          if (NITRO_LARP_SET[b.id] && b.id !== nitroPick) continue;
+          additions.push(makeBadgePayload(b));
         }
-        // Append after Discord's own badges (Nitro, Hypesquad from account, etc.)
-        return base.concat(additions);
+        return base2.concat(additions);
       }
 
       unpatches.push(after(hookKey, mod, badgeHandler));
@@ -433,6 +548,9 @@
           marginBottom: 10
         }
       }, "Badges (tap to toggle)"),
+      React.createElement(Text, {
+        style: { color: "#949ba4", fontSize: 11, marginBottom: 8, lineHeight: 15 }
+      }, "Nitro / paliers : si tu as déjà un vrai badge Nitro sur ton compte, Larp le retire et affiche celui que tu coches (un seul à la fois = le plus haut dans la liste). Si tu n'as pas Nitro, le badge choisi s'ajoute."),
 
       BADGES.map(badgeRow),
 

@@ -1,7 +1,7 @@
 {
   "name": "Larp",
-  "description": "[v9.4] Larp badges render after native badges (e.g. Nitro).",
-  "authors": [{ "name": "hello156165 (v9.4)" }],
+  "description": "[v9.5] Nitro tiers: replace real Nitro if you have it; Emerald/Ruby/Opal SVG + asset aliases.",
+  "authors": [{ "name": "hello156165 (v9.5)" }],
   "main": "index.js",
   "hash": "REPLACED_AT_BUILD_TIME",
   "vendetta": {
