@@ -1,24 +1,8 @@
-/* Larp — local Discord cosmetic plugin.
- *
- * Runs in Kettu's eval context. Kettu wraps this entire file as the body
- * of `vendetta => { return <THIS> }`, so we MUST evaluate to a single
- * expression: an IIFE that returns the plugin object.
- *
- * NO ES module imports. NO JSX. NO esbuild __toESM helpers. We grab
- * everything off the `vendetta` parameter directly — that's the most
- * reliable surface Kettu exposes.
- */
-
 (function () {
   "use strict";
 
-  /** Bump with releases — visible in toast so you know the phone loaded this build (not an old CDN file). */
-  var LARP_UI_TAG = "v10.5";
+  var LARP_UI_TAG = "v10.6";
 
-  // ---------------------------------------------------------------------
-  // Resolve runtime APIs from `vendetta` (the arrow parameter Kettu
-  // guarantees is populated before our code runs).
-  // ---------------------------------------------------------------------
   var React = vendetta.metro.common.React;
   var RN = vendetta.metro.common.ReactNative;
   var View = RN.View;
@@ -34,11 +18,9 @@
   var showToast = vendetta.ui.toasts.showToast;
   var getAssetIDByName = vendetta.ui.assets.getAssetIDByName;
 
-  // Persistent storage scoped to this plugin (MMKV under the hood).
   var storage = vendetta.plugin.storage;
   if (storage.matchUsername == null) storage.matchUsername = "";
   if (storage.replaceUsername == null) storage.replaceUsername = "";
-  /** ISO ou date FR JJ/MM/AAAA — « Membre depuis » (snowflake + profil + proxy). Vide = désactivé. */
   if (storage.spoofAccountDateIso == null) storage.spoofAccountDateIso = "";
   if (typeof storage.badges !== "object" || storage.badges === null) {
     storage.badges = {};
@@ -51,12 +33,7 @@
   if (storage.hideNative.legacyUsername == null) storage.hideNative.legacyUsername = false;
   if (storage.hideNative.levelLeaf == null) storage.hideNative.levelLeaf = false;
   if (storage.hideNative.idSubstrings == null) storage.hideNative.idSubstrings = "";
-  // All official Discord badges. id is internal, label is the human name,
-  // assetName is the Discord asset registered in the app, cdnUrl is a
-  // fallback if the local asset can't be found.
-  // ---------------------------------------------------------------------
   var CDN = "https://cdn.discordapp.com/badge-icons";
-  /** PNG hashes from Discord profile badge table (XYZenix gist) — RN often skips remote SVG. */
   var ICON_EMERALD = "11e2d339068b55d3a506cff34d3780f3";
   var ICON_RUBY = "cd5e2cfd9d7f27a8cdcd3e8a8d5dc9f4";
   var ICON_OPAL = "5b154df19c53dce2af92c9b61e6be5e2";
@@ -131,13 +108,10 @@
     { id: "quest",                   label: "Completed a Quest",        asset: "QuestBadge",                       url: CDN + "/7d9ae358c8c5e118768335dbe68b4fb8.png" }
   ];
 
-  /** CDN icon hashes — hide by asset even when id/description don't say "quest". */
   var QUEST_BADGE_ICON_HASH = "7d9ae358c8c5e118768335dbe68b4fb8";
   var ORB_BADGE_ICON_HASH = "83d8a1eb09a8d64e59233eec5d4d5c2d";
-  /** April Fools / "Level N Reached" style profile badge (XYZenix gist). */
   var LEVEL_LEAF_ICON_HASH = "ca105ad9cfc8580c765101d17bbb2323";
 
-  /** Highest wins when several Nitro rows are toggled on. */
   var NITRO_LARP_ORDER = [
     "premium_tenure_opal",
     "premium_tenure_ruby",
@@ -154,7 +128,6 @@
     NITRO_LARP_SET[NITRO_LARP_ORDER[_ni]] = true;
   }
 
-  /** Same pattern as Nitro: one fake boost badge at a time (higher months win). */
   var BOOST_LARP_ORDER = ["guild_boost_24", "guild_boost_12"];
   var BOOST_LARP_SET = {};
   for (var _bi0 = 0; _bi0 < BOOST_LARP_ORDER.length; _bi0++) {
@@ -168,10 +141,6 @@
     LARP_BADGE_META["larp-" + _bb.id] = _entry;
   }
 
-  /**
-   * Nitro / Boost : jamais d’asset Discord dans la ligne (sinon le client ouvre
-   * « Manage Nitro » même avec id `larp-*`). Image = JSX + CDN uniquement.
-   */
   function makeBadgePayload(b) {
     var idOut = "larp-" + b.id;
     if (NITRO_LARP_SET[b.id] || BOOST_LARP_SET[b.id]) {
@@ -272,7 +241,6 @@
     return false;
   }
 
-  /** Hide ugly / unwanted real badges on your own profile (client-only). */
   function shouldHideNativeBadge(b) {
     if (!b) return false;
     if (String(b.id || "").indexOf("larp-") === 0) return false;
@@ -348,7 +316,6 @@
     return false;
   }
 
-  /** True for Discord's real Nitro / tenure gems (not our larp- rows). */
   function isNativeNitroLike(b) {
     if (!b) return false;
     if (String(b.id || "").indexOf("larp-") === 0) return false;
@@ -373,7 +340,6 @@
     return c;
   }
 
-  /** Partition merged badges: all Nitro-like first, then all Boost-like, then the rest (stable within each bucket). */
   function isNitroBadgeRow(b, nitroPayload) {
     if (!b) return false;
     if (nitroPayload != null && String(b.id) === String(nitroPayload.id)) return true;
@@ -388,10 +354,6 @@
     return false;
   }
 
-  /**
-   * Profile badge plate order (stable sort by rank, then original index):
-   * Nitro → Staff → Partner → HypeSquad Events → Active/Verified Dev → Early Supporter → Boost → autres.
-   */
   function plateRank(b, nitroPayload, boostPayload) {
     if (!b) return 999;
     if (isNitroBadgeRow(b, nitroPayload)) return 0;
@@ -431,19 +393,11 @@
     return 100;
   }
 
-  // ---------------------------------------------------------------------
-  // Patches (applied in onLoad, released in onUnload).
-  // ---------------------------------------------------------------------
   var unpatches = [];
-  /** Évite la récursion quand shouldWrapUserForProxy lit `getCurrentUser` pendant le wrap. */
   var __larpInsideUserStoreWrap = false;
-  /** Évite de patcher deux fois la même méthode de store profil. */
   var __larpProfileStorePatched = {};
-
-  /** Cached UserStore reference (also used by badge patch). */
   var UserStoreRef = null;
 
-  /** Trim, strip leading @, lowercase — for comparing usernames. */
   function normName(s) {
     if (s == null || typeof s !== "string") return "";
     var t = s.trim();
@@ -451,7 +405,6 @@
     return t.toLowerCase();
   }
 
-  /** @returns {number|null} epoch ms — ISO, ou JJ/MM/AAAA (ex. 04/07/2019). */
   function parseAccountDateIsoMs(s) {
     if (s == null || typeof s !== "string") return null;
     var t = s.trim();
@@ -477,7 +430,6 @@
     return b;
   }
 
-  /** One Proxy per underlying user object — avoids a new `{}` every Flux tick (that broke useMemo / updateMemo). */
   var wrapProxyByUser = new WeakMap();
 
   function shouldSpoofUser(user) {
@@ -529,7 +481,6 @@
 
         if (p === "username") return replace;
 
-        // "user#0" style tag shown under display name on mobile
         if (p === "tag") {
           var tag = Reflect.get(t, "tag", recv);
           if (typeof tag === "string") {
@@ -750,8 +701,6 @@
 
   function patchBadges() {
     try {
-      // Kettu's own badges plugin patches `default` on the raw `useBadges`
-      // module — the hook is module.default, NOT a named export `useBadges`.
       var mod = findByName("useBadges", false);
       if (!mod) return;
       var hookKey = typeof mod.default === "function" ? "default" : null;
@@ -771,7 +720,6 @@
           }
         }
         if (!hasAny) {
-          // Still strip stale larp-* if toggles were cleared
           var onlyReal = ret.filter(function (x) {
             return !x || !x.id || String(x.id).indexOf("larp-") !== 0;
           });
@@ -789,9 +737,6 @@
         var curId = cur && cur.id;
         if (!uid || !curId || String(uid) !== String(curId)) return ret;
 
-        // CRITICAL: never unshift onto `ret` repeatedly — useBadges runs on
-        // every render; duplicating entries grows the array until React
-        // crashes inside updateMemo.
         var base = ret.filter(function (x) {
           return !x || !x.id || String(x.id).indexOf("larp-") !== 0;
         });
@@ -862,11 +807,6 @@
     }
   }
 
-  /**
-   * Same idea as Kettu's core badges plugin: remote badge rows from
-   * useBadges need `props.source` applied when ProfileBadge / RenderedBadge
-   * is actually created via the jsx runtime.
-   */
   function patchBadgeIconsViaJsx() {
     try {
       var jsxRuntime = findByProps("jsx", "jsxs");
@@ -910,9 +850,6 @@
     }
   }
 
-  // ---------------------------------------------------------------------
-  // Settings UI (React.createElement only, NO JSX).
-  // ---------------------------------------------------------------------
   function Settings() {
     var s = React.useState(0);
     var force = s[1];
@@ -1124,9 +1061,6 @@
     );
   }
 
-  // ---------------------------------------------------------------------
-  // Plugin object — this is what Kettu's evalPlugin returns.
-  // ---------------------------------------------------------------------
   return {
     onLoad: function () {
       try {
