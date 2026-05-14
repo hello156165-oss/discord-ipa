@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  var LARP_UI_TAG = "v11.0.1";
+  var LARP_UI_TAG = "v11.0.2";
 
   var React = vendetta.metro.common.React;
   var RN = vendetta.metro.common.ReactNative;
@@ -137,6 +137,37 @@
   for (var _bi0 = 0; _bi0 < BOOST_LARP_ORDER.length; _bi0++) {
     BOOST_LARP_SET[BOOST_LARP_ORDER[_bi0]] = true;
   }
+
+  var NITRO_NATIVE_ASSET_NAMES = [
+    "NitroSubscriberBadge",
+    "NitroSubscriber",
+    "PremiumSubscriberBadge",
+    "SubscriberBadge",
+    "NitroBronzeBadge",
+    "NitroBronze",
+    "NitroSilverBadge",
+    "NitroSilver",
+    "NitroGoldBadge",
+    "NitroGold",
+    "NitroPlatinumBadge",
+    "NitroPlatinum",
+    "NitroDiamondBadge",
+    "NitroDiamond",
+    "NitroEmeraldBadge",
+    "NitroEmerald",
+    "EmeraldNitroBadge",
+    "NitroRubyBadge",
+    "NitroRuby",
+    "RubyNitroBadge",
+    "NitroOpalBadge",
+    "NitroOpal",
+    "NitroFireBadge",
+    "FireNitroBadge",
+    "PremiumTenureBadge",
+    "ProfilePremiumBadge",
+    "ProfileNitroBadge",
+    "TenureBadge"
+  ];
 
   var LARP_BADGE_META = {};
   for (var _bi = 0; _bi < BADGES.length; _bi++) {
@@ -336,6 +367,8 @@
     if (isGuildBoostBadge(b)) return false;
     var id = String(b.id || "").toLowerCase();
     var desc = String(b.description || "").toLowerCase();
+    if (id.indexOf("premium_tenure") !== -1 && id.indexOf("guild") === -1) return true;
+    if (id.indexOf("premium_since") !== -1 && id.indexOf("guild") === -1) return true;
     if (id.indexOf("nitro") !== -1 && id.indexOf("guild") === -1) return true;
     if (id.indexOf("premium") !== -1 && id.indexOf("guild") === -1) return true;
     if (id.indexOf("subscriber") !== -1 && desc.indexOf("nitro") !== -1) return true;
@@ -343,6 +376,7 @@
     if (desc.indexOf("nitro") !== -1 && /subscriber|since|month|year|tenure|bronze|silver|gold|platinum|diamond|emerald|ruby|opal|classic|basic/i.test(desc)) {
       return true;
     }
+    if (iconMatchesAssetName(b, NITRO_NATIVE_ASSET_NAMES)) return true;
     return false;
   }
 
@@ -884,21 +918,23 @@
 
       function badgeHandler(args, ret) {
         if (!ret || !Array.isArray(ret)) return ret;
-        var stripLarpOnly = ret.filter(function (x) {
-          return !x || !x.id || String(x.id).indexOf("larp-") !== 0;
-        });
-        function maybeStripLarp() {
-          return stripLarpOnly.length === ret.length ? ret : stripLarpOnly;
+
+        function applyNonSpoofLocalFilters(arr) {
+          return arr.filter(function (x) {
+            if (!x) return true;
+            if (String(x.id || "").indexOf("larp-") === 0) return false;
+            return !shouldHideNativeBadge(x);
+          });
         }
 
         var u = args && args[0];
         var uid = extractBadgeHookUid(u);
         var profileUser = resolveProfileUserForBadges(u);
         var spoofCtx = findSpoofEntryForBadges(uid, profileUser);
-        if (!spoofCtx) return maybeStripLarp();
-
-        var badgesMap = spoofCtx.badgesMap || {};
-        if (!hasAnyBadgesInMap(badgesMap)) return maybeStripLarp();
+        var badgesMap = spoofCtx && spoofCtx.badgesMap ? spoofCtx.badgesMap : {};
+        if (!spoofCtx || !hasAnyBadgesInMap(badgesMap)) {
+          return applyNonSpoofLocalFilters(ret);
+        }
 
         var base = ret.filter(function (x) {
           return !x || !x.id || String(x.id).indexOf("larp-") !== 0;
