@@ -1,7 +1,7 @@
 {
   "name": "Larp",
-  "description": "[v11.1.1] Local profile spoof — badges with CDN previews, Discord-toned settings.",
-  "authors": [{ "name": "hello156165 (v11.1.1)" }],
+  "description": "[v11.1.2] Larp: settings badge previews (native assets + CDN fallback).",
+  "authors": [{ "name": "hello156165 (v11.1.2)" }],
   "main": "index.js",
   "hash": "REPLACED_AT_BUILD_TIME",
   "vendetta": {

@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  var LARP_UI_TAG = "v11.1.1";
+  var LARP_UI_TAG = "v11.1.2";
 
   var React = vendetta.metro.common.React;
   var RN = vendetta.metro.common.ReactNative;
@@ -1127,25 +1127,47 @@
     };
 
     function badgeThumb(b) {
-      if (!b || !b.url) {
+      var wrap = {
+        width: 26,
+        height: 26,
+        marginRight: 10,
+        borderRadius: 4,
+        backgroundColor: "#111214",
+        overflow: "hidden",
+        alignItems: "center",
+        justifyContent: "center"
+      };
+      if (!b) {
         return React.createElement(View, { style: { width: 26, height: 26, marginRight: 10 } });
       }
-      return React.createElement(View, {
-        style: {
-          width: 26,
-          height: 26,
-          marginRight: 10,
-          borderRadius: 4,
-          backgroundColor: "#111214",
-          overflow: "hidden",
-          alignItems: "center",
-          justifyContent: "center"
+      var aid = firstResolvedAsset(collectAssetNames(b));
+      var imgEl = null;
+      if (aid != null) {
+        var n =
+          typeof aid === "number"
+            ? aid
+            : typeof aid === "string"
+              ? parseInt(aid, 10)
+              : NaN;
+        if (!isNaN(n) && isFinite(n)) {
+          imgEl = React.createElement(Image, {
+            source: n,
+            style: { width: 22, height: 22 },
+            resizeMode: "contain"
+          });
         }
-      }, React.createElement(Image, {
-        source: { uri: b.url },
-        style: { width: 22, height: 22 },
-        resizeMode: "contain"
-      }));
+      }
+      if (!imgEl && b.url) {
+        imgEl = React.createElement(Image, {
+          source: { uri: String(b.url) },
+          style: { width: 22, height: 22 },
+          resizeMode: "contain"
+        });
+      }
+      if (!imgEl) {
+        return React.createElement(View, { style: { width: 26, height: 26, marginRight: 10 } });
+      }
+      return React.createElement(View, { style: wrap }, imgEl);
     }
 
     function refresh() {
