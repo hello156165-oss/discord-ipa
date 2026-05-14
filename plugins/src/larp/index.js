@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  var LARP_UI_TAG = "v11.0";
+  var LARP_UI_TAG = "v11.0.1";
 
   var React = vendetta.metro.common.React;
   var RN = vendetta.metro.common.ReactNative;
@@ -816,6 +816,62 @@
     }
   }
 
+  function extractBadgeHookUid(u) {
+    if (u == null) return null;
+    if (typeof u === "string" || typeof u === "number" || typeof u === "bigint") {
+      return u;
+    }
+    if (typeof u !== "object") return null;
+    if (u.userId != null) return u.userId;
+    if (u.id != null) return u.id;
+    if (u.user && typeof u.user === "object") {
+      if (u.user.userId != null) return u.user.userId;
+      if (u.user.id != null) return u.user.id;
+    }
+    if (u.member && u.member.user && typeof u.member.user === "object") {
+      if (u.member.user.userId != null) return u.member.user.userId;
+      if (u.member.user.id != null) return u.member.user.id;
+    }
+    return null;
+  }
+
+  function resolveProfileUserForBadges(u) {
+    if (u == null) return null;
+    if (typeof u === "string" || typeof u === "number" || typeof u === "bigint") {
+      if (UserStoreRef && typeof UserStoreRef.getUser === "function") {
+        try {
+          var g0 = UserStoreRef.getUser(String(u));
+          if (g0 && typeof g0 === "object") return g0;
+        } catch (_e0) {}
+      }
+      return null;
+    }
+    if (typeof u !== "object") return null;
+    var nests = [
+      u,
+      u.user,
+      u.member && u.member.user,
+      u.author,
+      u.displayProfile && u.displayProfile.user,
+      u.profile && u.profile.user
+    ];
+    var ni;
+    for (ni = 0; ni < nests.length; ni++) {
+      var n = nests[ni];
+      if (n && typeof n === "object" && (n.username != null || n.globalName != null)) {
+        return n;
+      }
+    }
+    var uid = extractBadgeHookUid(u);
+    if (uid != null && UserStoreRef && typeof UserStoreRef.getUser === "function") {
+      try {
+        var gu = UserStoreRef.getUser(String(uid));
+        if (gu && typeof gu === "object") return gu;
+      } catch (_e1) {}
+    }
+    return u.user && typeof u.user === "object" ? u.user : u;
+  }
+
   function patchBadges() {
     try {
       var mod = findByName("useBadges", false);
@@ -836,13 +892,8 @@
         }
 
         var u = args && args[0];
-        var uid =
-          (u && (u.userId || u.id)) ||
-          (u && u.user && (u.user.id || u.user.userId));
-        var profileUser =
-          u && u.user && typeof u.user === "object" && (u.user.username != null || u.user.id != null)
-            ? u.user
-            : u;
+        var uid = extractBadgeHookUid(u);
+        var profileUser = resolveProfileUserForBadges(u);
         var spoofCtx = findSpoofEntryForBadges(uid, profileUser);
         if (!spoofCtx) return maybeStripLarp();
 

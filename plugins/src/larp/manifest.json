@@ -1,7 +1,7 @@
 {
   "name": "Larp",
-  "description": "[v11.0] Badges + @ spoof multi-comptes, masquer Nitro/Boost natifs, solde Orb.",
-  "authors": [{ "name": "hello156165 (v11.0)" }],
+  "description": "[v11.0.1] Badges + @ spoof multi-comptes (useBadges + UserStore), masquer Nitro/Boost, Orb.",
+  "authors": [{ "name": "hello156165 (v11.0.1)" }],
   "main": "index.js",
   "hash": "REPLACED_AT_BUILD_TIME",
   "vendetta": {
