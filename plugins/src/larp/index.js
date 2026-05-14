@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  var LARP_UI_TAG = "v11.1.4";
+  var LARP_UI_TAG = "v11.1.5";
 
   var React = vendetta.metro.common.React;
   var RN = vendetta.metro.common.ReactNative;
@@ -9,10 +9,7 @@
   var Text = RN.Text;
   var TextInput = RN.TextInput;
   var ScrollView = RN.ScrollView;
-  var Image = RN.Image;
-  if (typeof Image !== "function") {
-    Image = null;
-  }
+  var Pressable = RN.Pressable || RN.TouchableOpacity;
 
   var findByStoreName = vendetta.metro.findByStoreName;
   var findByName = vendetta.metro.findByName;
@@ -1141,35 +1138,6 @@
       link: "#00a8fc"
     };
 
-    function badgeThumb(b) {
-      var spacer = React.createElement(View, { style: { width: 26, height: 26, marginRight: 10 } });
-      if (!b || !Image) return spacer;
-      var wrap = {
-        width: 26,
-        height: 26,
-        marginRight: 10,
-        borderRadius: 4,
-        backgroundColor: "#111214",
-        overflow: "hidden",
-        alignItems: "center",
-        justifyContent: "center"
-      };
-      if (!b.url) return spacer;
-      try {
-        return React.createElement(
-          View,
-          { style: wrap },
-          React.createElement(Image, {
-            source: { uri: String(b.url) },
-            style: { width: 22, height: 22 },
-            resizeMode: "contain"
-          })
-        );
-      } catch (_bt) {
-        return spacer;
-      }
-    }
-
     function refresh() {
       clearLarpGetUserCache();
       force(function (n) {
@@ -1273,7 +1241,6 @@
           backgroundColor: on ? "#383a40" : "transparent"
         }
       },
-        badgeThumb(b),
         React.createElement(Text, { style: { color: C.text, fontSize: 15, flex: 1 } }, b.label),
         React.createElement(Text, {
           style: { color: on ? C.accent : C.muted, fontSize: 13, marginLeft: 6 }
@@ -1373,7 +1340,6 @@
               backgroundColor: on ? "#383a40" : "transparent"
             }
           },
-            badgeThumb(b),
             React.createElement(Text, { style: { color: C.text, fontSize: 14, flex: 1 } }, b.label),
             React.createElement(Text, {
               style: { color: on ? C.accent : C.muted, fontSize: 13, marginLeft: 6 }
