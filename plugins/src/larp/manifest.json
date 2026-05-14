@@ -1,7 +1,7 @@
 {
   "name": "Larp",
-  "description": "[v11.0.2] Masquer Nitro/Boost natif sur tous les profils (useBadges). Multi-comptes + Orb.",
-  "authors": [{ "name": "hello156165 (v11.0.2)" }],
+  "description": "[v11.1.0] Local profile spoof: badges, @handle, multi-account, hide native badges.",
+  "authors": [{ "name": "hello156165 (v11.1.0)" }],
   "main": "index.js",
   "hash": "REPLACED_AT_BUILD_TIME",
   "vendetta": {

@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  var LARP_UI_TAG = "v11.0.2";
+  var LARP_UI_TAG = "v11.1.0";
 
   var React = vendetta.metro.common.React;
   var RN = vendetta.metro.common.ReactNative;
@@ -57,24 +57,24 @@
     { id: "early_supporter",         label: "Early Supporter",          asset: "EarlySupporterBadge",              url: CDN + "/7060786766c9c840eb3019e725d2b358.png" },
     {
       id: "premium",
-      label: "Discord Nitro (icône générique)",
+      label: "Discord Nitro (generic icon)",
       assetCandidates: ["NitroSubscriberBadge", "NitroSubscriber", "PremiumSubscriberBadge", "SubscriberBadge"],
       url: CDN + "/2ba85e8026a8614b640c2837bcdfe21b.png"
     },
     { id: "premium_tenure_3_month",  label: "Nitro · ~3 mo (bronze)",   assetCandidates: ["NitroBronzeBadge", "NitroBronze", "premium_tenure_03_month_v2"], url: CDN + "/6de6d34650760ba5551a79732e98ed60.png" },
-    { id: "premium_tenure_6_month",  label: "Nitro · ~6 mo (argent)",   assetCandidates: ["NitroSilverBadge", "NitroSilver", "premium_tenure_06_month_v2"], url: CDN + "/6de6d34650760ba5551a79732e98ed60.png" },
-    { id: "premium_tenure_12_month", label: "Nitro · ~12 mo (or)",      assetCandidates: ["NitroGoldBadge", "NitroGold", "premium_tenure_12_month_v2"], url: CDN + "/d92998916f4ce6f74de7da0a37b8d740.png" },
-    { id: "premium_tenure_24_month", label: "Nitro · ~24 mo (platine)", assetCandidates: ["NitroPlatinumBadge", "NitroPlatinum", "premium_tenure_24_month_v2"], url: CDN + "/9d4f73ca6df09bc63a39ea84d5fd0ff5.png" },
-    { id: "premium_tenure_36_month", label: "Nitro · ~36 mo (diamant)", assetCandidates: ["NitroDiamondBadge", "NitroDiamond", "premium_tenure_36_month_v2"], url: CDN + "/65d6d6df9d56b8c3f4b3b1f3e4f3a0c8.png" },
+    { id: "premium_tenure_6_month",  label: "Nitro · ~6 mo (silver)",   assetCandidates: ["NitroSilverBadge", "NitroSilver", "premium_tenure_06_month_v2"], url: CDN + "/6de6d34650760ba5551a79732e98ed60.png" },
+    { id: "premium_tenure_12_month", label: "Nitro · ~12 mo (gold)",      assetCandidates: ["NitroGoldBadge", "NitroGold", "premium_tenure_12_month_v2"], url: CDN + "/d92998916f4ce6f74de7da0a37b8d740.png" },
+    { id: "premium_tenure_24_month", label: "Nitro · ~24 mo (platinum)", assetCandidates: ["NitroPlatinumBadge", "NitroPlatinum", "premium_tenure_24_month_v2"], url: CDN + "/9d4f73ca6df09bc63a39ea84d5fd0ff5.png" },
+    { id: "premium_tenure_36_month", label: "Nitro · ~36 mo (diamond)", assetCandidates: ["NitroDiamondBadge", "NitroDiamond", "premium_tenure_36_month_v2"], url: CDN + "/65d6d6df9d56b8c3f4b3b1f3e4f3a0c8.png" },
     {
       id: "premium_tenure_emerald",
-      label: "Nitro · Emerald (36 mo)",
+      label: "Nitro · Emerald (36 mo.)",
       assetCandidates: ["NitroEmeraldBadge", "NitroEmerald", "EmeraldNitroBadge", "premium_tenure_36_month_v2"],
       url: CDN + "/" + ICON_EMERALD + ".png"
     },
     {
       id: "premium_tenure_ruby",
-      label: "Nitro · Ruby (60 mo)",
+      label: "Nitro · Ruby (60 mo.)",
       assetCandidates: ["NitroRubyBadge", "NitroRuby", "RubyNitroBadge", "premium_tenure_60_month_v2"],
       url: CDN + "/" + ICON_RUBY + ".png"
     },
@@ -86,7 +86,7 @@
     },
     {
       id: "guild_boost_12",
-      label: "Nitro Boost · ~12 mo (icône)",
+      label: "Server boost · ~12 mo",
       assetCandidates: [
         "GuildBoosterLevel6Badge",
         "GuildBoosterBadgeTier6",
@@ -97,7 +97,7 @@
     },
     {
       id: "guild_boost_24",
-      label: "Nitro Boost · ~24 mo (icône)",
+      label: "Server boost · ~24 mo",
       assetCandidates: [
         "GuildBoosterLevel9Badge",
         "GuildBoosterBadgeTier9",
@@ -272,16 +272,44 @@
     return bits.join("\n").toLowerCase();
   }
 
-  function iconMatchesAssetName(b, names) {
-    if (!b || b.icon == null) return false;
-    var ic = String(b.icon);
-    for (var _im = 0; _im < names.length; _im++) {
+  var LARP_ICON_IDS_QUEST = {};
+  var LARP_ICON_IDS_ORB = {};
+  var LARP_ICON_IDS_NITRO = {};
+
+  function addAssetNamesToIconSet(nameList, setObj) {
+    if (!nameList || !nameList.length) return;
+    var xi;
+    for (xi = 0; xi < nameList.length; xi++) {
       try {
-        var aid = getAssetIDByName(names[_im]);
-        if (aid != null && String(aid) === ic) return true;
-      } catch (_e2) {}
+        var _aid = getAssetIDByName(nameList[xi]);
+        var _n =
+          typeof _aid === "number"
+            ? _aid
+            : typeof _aid === "string"
+              ? parseInt(_aid, 10)
+              : NaN;
+        if (!isNaN(_n) && isFinite(_n)) setObj[String(_n)] = true;
+      } catch (_x) {}
     }
-    return false;
+  }
+
+  function warmLarpIconAssetCache() {
+    try {
+      addAssetNamesToIconSet(
+        ["QuestBadge", "QuestCompletedBadge", "QuestCompletedProfileBadge", "ProfileQuestBadge"],
+        LARP_ICON_IDS_QUEST
+      );
+      addAssetNamesToIconSet(
+        ["OrbProfileBadge", "CollectedOrbProfileBadge", "ProfileOrbBadge", "OrbBadge"],
+        LARP_ICON_IDS_ORB
+      );
+      addAssetNamesToIconSet(NITRO_NATIVE_ASSET_NAMES, LARP_ICON_IDS_NITRO);
+    } catch (_w) {}
+  }
+
+  function iconIdInSet(b, setObj) {
+    if (!b || b.icon == null || !setObj) return false;
+    return !!setObj[String(b.icon)];
   }
 
   function shouldHideNativeBadge(b) {
@@ -290,42 +318,27 @@
     var h = storage.hideNative || {};
     var id = String(b.id || "").toLowerCase();
     var desc = String(b.description || b.tooltip || "").toLowerCase();
-    var hay = badgeHaystack(b);
+    var hay = "";
+    if (h.quest || h.orb || h.levelLeaf || (h.idSubstrings && String(h.idSubstrings).trim())) {
+      hay = badgeHaystack(b);
+    }
 
     if (h.quest) {
       if (id.indexOf("quest") !== -1 || desc.indexOf("quest") !== -1) return true;
-      if (hay.indexOf(QUEST_BADGE_ICON_HASH) !== -1) return true;
-      if (
-        iconMatchesAssetName(b, [
-          "QuestBadge",
-          "QuestCompletedBadge",
-          "QuestCompletedProfileBadge",
-          "ProfileQuestBadge"
-        ])
-      ) {
-        return true;
-      }
+      if (hay && hay.indexOf(QUEST_BADGE_ICON_HASH) !== -1) return true;
+      if (iconIdInSet(b, LARP_ICON_IDS_QUEST)) return true;
     }
     if (h.orb) {
       if (id.indexOf("orb") !== -1 || desc.indexOf("orb profile") !== -1 || desc.indexOf("collected the orb") !== -1) {
         return true;
       }
-      if (hay.indexOf(ORB_BADGE_ICON_HASH) !== -1) return true;
-      if (
-        iconMatchesAssetName(b, [
-          "OrbProfileBadge",
-          "CollectedOrbProfileBadge",
-          "ProfileOrbBadge",
-          "OrbBadge"
-        ])
-      ) {
-        return true;
-      }
+      if (hay && hay.indexOf(ORB_BADGE_ICON_HASH) !== -1) return true;
+      if (iconIdInSet(b, LARP_ICON_IDS_ORB)) return true;
     }
     if (h.nitro && isNativeNitroLike(b)) return true;
     if (h.boost && isGuildBoostBadge(b)) return true;
     if (h.levelLeaf) {
-      if (hay.indexOf(LEVEL_LEAF_ICON_HASH) !== -1) return true;
+      if (hay && hay.indexOf(LEVEL_LEAF_ICON_HASH) !== -1) return true;
       if (id.indexOf("april_fool") !== -1 || id.indexOf("aprilfool") !== -1) return true;
       if (/\blevel\b\s*\d+\s*reached/i.test(desc) || /\breached\b.*\blevel\b/i.test(desc)) return true;
       if (/niveau.*atteint|atteint.*niveau/i.test(desc)) return true;
@@ -376,7 +389,7 @@
     if (desc.indexOf("nitro") !== -1 && /subscriber|since|month|year|tenure|bronze|silver|gold|platinum|diamond|emerald|ruby|opal|classic|basic/i.test(desc)) {
       return true;
     }
-    if (iconMatchesAssetName(b, NITRO_NATIVE_ASSET_NAMES)) return true;
+    if (iconIdInSet(b, LARP_ICON_IDS_NITRO)) return true;
     return false;
   }
 
@@ -455,7 +468,7 @@
         var body = React.createElement(
           Text,
           { style: { color: "#dcddde", fontSize: 16, lineHeight: 22 } },
-          meta.label + "\n\n" + "Aperçu local (Larp)."
+          meta.label + "\n\n" + "Local preview only (Larp)."
         );
         var opts = {
           title: title,
@@ -486,6 +499,33 @@
   var __larpInsideUserStoreWrap = false;
   var __larpProfileStorePatched = {};
   var UserStoreRef = null;
+
+  var __larpGetUserCache = new Map();
+  var __larpGetUserCacheQueue = [];
+  var LARP_GET_USER_CACHE_MAX = 320;
+
+  function clearLarpGetUserCache() {
+    __larpGetUserCache.clear();
+    __larpGetUserCacheQueue.length = 0;
+  }
+
+  function cachedGetUser(uid) {
+    if (uid == null || !UserStoreRef || typeof UserStoreRef.getUser !== "function") return null;
+    var k = String(uid);
+    if (__larpGetUserCache.has(k)) return __larpGetUserCache.get(k);
+    var gu = null;
+    try {
+      gu = UserStoreRef.getUser(k);
+    } catch (_cg) {}
+    if (gu == null) return null;
+    __larpGetUserCache.set(k, gu);
+    __larpGetUserCacheQueue.push(k);
+    while (__larpGetUserCacheQueue.length > LARP_GET_USER_CACHE_MAX) {
+      var rem = __larpGetUserCacheQueue.shift();
+      __larpGetUserCache.delete(rem);
+    }
+    return gu;
+  }
 
   function normName(s) {
     if (s == null || typeof s !== "string") return "";
@@ -874,7 +914,7 @@
     if (typeof u === "string" || typeof u === "number" || typeof u === "bigint") {
       if (UserStoreRef && typeof UserStoreRef.getUser === "function") {
         try {
-          var g0 = UserStoreRef.getUser(String(u));
+          var g0 = cachedGetUser(u);
           if (g0 && typeof g0 === "object") return g0;
         } catch (_e0) {}
       }
@@ -899,7 +939,7 @@
     var uid = extractBadgeHookUid(u);
     if (uid != null && UserStoreRef && typeof UserStoreRef.getUser === "function") {
       try {
-        var gu = UserStoreRef.getUser(String(uid));
+        var gu = cachedGetUser(uid);
         if (gu && typeof gu === "object") return gu;
       } catch (_e1) {}
     }
@@ -1074,7 +1114,20 @@
     var s = React.useState(0);
     var force = s[1];
 
+    var C = {
+      bg: "#0d0e10",
+      card: "#1b1d21",
+      inset: "#111214",
+      line: "#2e3036",
+      muted: "#949ba4",
+      text: "#f2f3f5",
+      accent: "#5865f2",
+      danger: "#ed4245",
+      ok: "#23a559"
+    };
+
     function refresh() {
+      clearLarpGetUserCache();
       force(function (n) {
         return n + 1;
       });
@@ -1089,22 +1142,55 @@
     var matchValue = storage.matchUsername || "";
     var replaceValue = storage.replaceUsername || "";
 
-    function field(label, value, key) {
-      return React.createElement(View, { style: { marginBottom: 16 } },
+    function section(title, body) {
+      return React.createElement(View, { style: { marginBottom: 18 } },
         React.createElement(Text, {
-          style: { color: "#dbdee1", fontSize: 14, fontWeight: "600", marginBottom: 6 }
+          style: {
+            color: C.muted,
+            fontSize: 11,
+            fontWeight: "700",
+            letterSpacing: 0.7,
+            marginBottom: 8,
+            textTransform: "uppercase"
+          }
+        }, title),
+        React.createElement(View, {
+          style: {
+            backgroundColor: C.card,
+            borderRadius: 14,
+            borderWidth: 1,
+            borderColor: C.line,
+            overflow: "hidden"
+          }
+        }, body)
+      );
+    }
+
+    function field(label, value, key, isFirst) {
+      return React.createElement(View, {
+        style: {
+          paddingHorizontal: 14,
+          paddingVertical: 12,
+          borderTopWidth: isFirst ? 0 : 1,
+          borderTopColor: C.line
+        }
+      },
+        React.createElement(Text, {
+          style: { color: C.muted, fontSize: 12, marginBottom: 6, fontWeight: "600" }
         }, label),
         React.createElement(TextInput, {
           style: {
-            backgroundColor: "#1e1f22",
-            color: "#ffffff",
-            borderRadius: 8,
+            backgroundColor: C.inset,
+            color: C.text,
+            borderRadius: 10,
+            borderWidth: 1,
+            borderColor: C.line,
             paddingHorizontal: 12,
-            paddingVertical: 10,
+            paddingVertical: 11,
             fontSize: 16
           },
           placeholder: label,
-          placeholderTextColor: "#80848e",
+          placeholderTextColor: "#6d6f78",
           value: value,
           autoCorrect: false,
           autoCapitalize: "none",
@@ -1124,32 +1210,33 @@
           storage.badges[b.id] = !on;
           refresh();
           try {
-            showToast(
-              (on ? "Removed " : "Added ") + b.label,
-              getAssetIDByName(on ? "Small" : "Check")
-            );
+            showToast((on ? "Removed " : "Added ") + b.label, getAssetIDByName(on ? "Small" : "Check"));
           } catch (_) {}
         },
         style: {
           flexDirection: "row",
           alignItems: "center",
           paddingHorizontal: 14,
-          paddingVertical: 12,
-          backgroundColor: on ? "#404652" : "#2b2d31",
-          borderRadius: 8,
-          marginBottom: 6
+          paddingVertical: 11,
+          borderTopWidth: 1,
+          borderTopColor: C.line,
+          backgroundColor: on ? "#252a44" : "transparent"
         }
       },
-        React.createElement(Text, {
-          style: { color: on ? "#5865f2" : "#80848e", fontSize: 18, marginRight: 12 }
-        }, on ? "☑" : "☐"),
-        React.createElement(Text, {
-          style: { color: "#ffffff", fontSize: 15, flex: 1 }
-        }, b.label)
+        React.createElement(View, {
+          style: {
+            width: 8,
+            height: 8,
+            borderRadius: 4,
+            marginRight: 12,
+            backgroundColor: on ? C.accent : "#4e5058"
+          }
+        }),
+        React.createElement(Text, { style: { color: C.text, fontSize: 15, flex: 1 } }, b.label)
       );
     }
 
-    function hideToggle(key, label) {
+    function hideToggle(key, label, noTop) {
       var on = !!storage.hideNative[key];
       return React.createElement(Pressable, {
         key: key,
@@ -1162,76 +1249,61 @@
           alignItems: "center",
           paddingHorizontal: 14,
           paddingVertical: 12,
-          backgroundColor: on ? "#404652" : "#2b2d31",
-          borderRadius: 8,
-          marginBottom: 6
+          borderTopWidth: noTop ? 0 : 1,
+          borderTopColor: C.line
         }
       },
+        React.createElement(Text, { style: { color: C.text, fontSize: 15, flex: 1, paddingRight: 10 } }, label),
         React.createElement(Text, {
-          style: { color: on ? "#ed4245" : "#80848e", fontSize: 18, marginRight: 12 }
-        }, on ? "☑" : "☐"),
-        React.createElement(Text, {
-          style: { color: "#ffffff", fontSize: 15, flex: 1 }
-        }, label)
+          style: { fontSize: 13, fontWeight: "800", color: on ? C.accent : C.muted }
+        }, on ? "ON" : "OFF")
       );
     }
 
-    return React.createElement(ScrollView, {
-      style: { flex: 1, backgroundColor: "#313338" },
-      contentContainerStyle: { padding: 16, paddingBottom: 64 }
-    },
-      React.createElement(Text, {
-        style: { color: "#ffffff", fontSize: 22, fontWeight: "700", marginBottom: 4 }
-      }, "Larp"),
-      React.createElement(Text, {
-        style: { color: "#b5bac1", fontSize: 13, marginBottom: 20 }
-      }, "100% local. Personne d'autre ne voit ces changements."),
-      React.createElement(Text, {
-        style: { color: "#949ba4", fontSize: 12, marginBottom: 12 }
-      }, "Pseudo : uniquement le handle @ (username), pas le display name. Comparaison sans @, insensible à la casse."),
+    var primaryBadgesBlock = React.createElement(View, null,
+      React.createElement(View, {
+        style: { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 4, borderBottomWidth: 1, borderBottomColor: C.line }
+      }, React.createElement(Text, { style: { color: C.muted, fontSize: 12, fontWeight: "600" } }, "Primary account")),
+      BADGES.map(badgeRow)
+    );
 
-      field("User to replace (username)", matchValue, "matchUsername"),
-      field("Replacement @handle", replaceValue, "replaceUsername"),
-
-      React.createElement(Text, {
-        style: {
-          color: "#dbdee1",
-          fontSize: 14,
-          fontWeight: "600",
-          marginTop: 4,
-          marginBottom: 6
-        }
-      }, "Autres comptes"),
-      React.createElement(Text, {
-        style: { color: "#949ba4", fontSize: 11, marginBottom: 10, lineHeight: 15 }
-      }, "Optionnel : id Discord = priorité. Sinon même règle @ que le compte principal. Badges séparés par ligne."),
-
-      (storage.otherProfiles || []).map(function (_op, oi) {
-        var op = storage.otherProfiles[oi];
+    var oth = storage.otherProfiles || [];
+    var otherProfilesBlock = React.createElement(View, null,
+      oth.map(function (_op, oi) {
+        var op = oth[oi];
         if (!op || typeof op !== "object") return null;
         if (typeof op.badges !== "object" || op.badges === null) op.badges = {};
 
-        function otherField(label, val, key) {
-          return React.createElement(View, { style: { marginBottom: 8 } },
+        function otherField(label, val, opKey, firstRow) {
+          return React.createElement(View, {
+            style: {
+              paddingHorizontal: 14,
+              paddingVertical: 10,
+              borderTopWidth: firstRow ? 0 : 1,
+              borderTopColor: C.line
+            }
+          },
             React.createElement(Text, {
-              style: { color: "#b5bac1", fontSize: 12, marginBottom: 4 }
+              style: { color: C.muted, fontSize: 12, marginBottom: 5, fontWeight: "600" }
             }, label),
             React.createElement(TextInput, {
               style: {
-                backgroundColor: "#1e1f22",
-                color: "#ffffff",
-                borderRadius: 8,
-                paddingHorizontal: 10,
-                paddingVertical: 8,
+                backgroundColor: C.inset,
+                color: C.text,
+                borderRadius: 10,
+                borderWidth: 1,
+                borderColor: C.line,
+                paddingHorizontal: 11,
+                paddingVertical: 9,
                 fontSize: 15
               },
               placeholder: label,
-              placeholderTextColor: "#80848e",
+              placeholderTextColor: "#6d6f78",
               value: val == null ? "" : String(val),
               autoCorrect: false,
               autoCapitalize: "none",
               onChangeText: function (v) {
-                op[key] = v;
+                op[opKey] = v;
                 refresh();
               }
             })
@@ -1249,42 +1321,37 @@
             style: {
               flexDirection: "row",
               alignItems: "center",
-              paddingHorizontal: 10,
-              paddingVertical: 8,
-              backgroundColor: on ? "#3c4080" : "#232428",
-              borderRadius: 6,
-              marginBottom: 4
+              paddingHorizontal: 14,
+              paddingVertical: 10,
+              borderTopWidth: 1,
+              borderTopColor: C.line,
+              backgroundColor: on ? "#252a44" : "transparent"
             }
           },
-            React.createElement(Text, {
-              style: { color: on ? "#949cf7" : "#80848e", fontSize: 16, marginRight: 8 }
-            }, on ? "☑" : "☐"),
-            React.createElement(Text, {
-              style: { color: "#dbdee1", fontSize: 13, flex: 1 }
-            }, b.label)
+            React.createElement(View, {
+              style: { width: 7, height: 7, borderRadius: 3, marginRight: 10, backgroundColor: on ? C.accent : "#4e5058" }
+            }),
+            React.createElement(Text, { style: { color: C.text, fontSize: 14, flex: 1 } }, b.label)
           );
         }
 
         return React.createElement(View, {
           key: "otherprof-" + oi,
           style: {
-            backgroundColor: "#2b2d31",
-            borderRadius: 10,
-            padding: 12,
-            marginBottom: 12,
-            borderWidth: 1,
-            borderColor: "#1f2023"
+            borderTopWidth: oi > 0 ? 1 : 0,
+            borderTopColor: C.line,
+            paddingBottom: 4
           }
         },
           React.createElement(Text, {
-            style: { color: "#ffffff", fontWeight: "700", marginBottom: 8, fontSize: 15 }
-          }, "Compte #" + (oi + 1)),
-          otherField("User id (optionnel)", op.userId || "", "userId"),
-          otherField("Username à matcher", op.matchUsername || "", "matchUsername"),
-          otherField("Remplacement @", op.replaceUsername || "", "replaceUsername"),
+            style: { color: C.text, fontWeight: "800", fontSize: 15, paddingHorizontal: 14, paddingTop: 12, paddingBottom: 6 }
+          }, "Account " + (oi + 1)),
+          otherField("User ID (optional)", op.userId || "", "userId", true),
+          otherField("Match username", op.matchUsername || "", "matchUsername"),
+          otherField("Replace @handle", op.replaceUsername || "", "replaceUsername"),
           React.createElement(Text, {
-            style: { color: "#b5bac1", fontSize: 12, marginTop: 4, marginBottom: 6 }
-          }, "Badges (ce compte)"),
+            style: { color: C.muted, fontSize: 11, paddingHorizontal: 14, marginTop: 4, marginBottom: 2 }
+          }, "Badges"),
           BADGES.map(otherBadgeRow),
           React.createElement(Pressable, {
             onPress: function () {
@@ -1292,18 +1359,19 @@
               refresh();
             },
             style: {
-              marginTop: 10,
-              padding: 10,
-              backgroundColor: "#da373c",
-              borderRadius: 8,
-              alignItems: "center"
+              marginHorizontal: 12,
+              marginTop: 8,
+              marginBottom: 8,
+              padding: 11,
+              borderRadius: 10,
+              alignItems: "center",
+              backgroundColor: "rgba(237,66,69,0.12)",
+              borderWidth: 1,
+              borderColor: "rgba(237,66,69,0.35)"
             }
-          },
-            React.createElement(Text, { style: { color: "#fff", fontWeight: "600" } }, "Supprimer cette ligne")
-          )
+          }, React.createElement(Text, { style: { color: C.danger, fontWeight: "800" } }, "Remove"))
         );
       }),
-
       React.createElement(Pressable, {
         onPress: function () {
           storage.otherProfiles.push({
@@ -1315,113 +1383,112 @@
           refresh();
         },
         style: {
-          marginBottom: 16,
-          padding: 12,
-          backgroundColor: "#248046",
-          borderRadius: 8,
-          alignItems: "center"
+          borderTopWidth: oth.length ? 1 : 0,
+          borderTopColor: C.line,
+          padding: 14,
+          alignItems: "center",
+          backgroundColor: "#1a2520"
         }
-      },
-        React.createElement(Text, {
-          style: { color: "#ffffff", fontWeight: "600" }
-        }, "Ajouter un compte")
+      }, React.createElement(Text, { style: { color: C.ok, fontWeight: "800", fontSize: 15 } }, "Add account"))
+    );
+
+    return React.createElement(ScrollView, {
+      style: { flex: 1, backgroundColor: C.bg },
+      contentContainerStyle: { padding: 18, paddingBottom: 72 }
+    },
+      React.createElement(Text, {
+        style: { color: C.text, fontSize: 26, fontWeight: "800", letterSpacing: -0.4 }
+      }, "Larp"),
+      React.createElement(Text, {
+        style: { color: C.muted, fontSize: 14, marginTop: 4, marginBottom: 22 }
+      }, "Client-side only."),
+
+      section(
+        "Username",
+        React.createElement(View, null, [
+          field("Match (without @)", matchValue, "matchUsername", true),
+          field("Show as @handle", replaceValue, "replaceUsername")
+        ])
       ),
 
-      field(
-        "Date du compte (ISO ou JJ/MM/AAAA)",
-        storage.spoofAccountDateIso || "",
-        "spoofAccountDateIso"
+      section("Other accounts", otherProfilesBlock),
+
+      section(
+        "Member since",
+        field("Date (ISO or DD/MM/YYYY)", storage.spoofAccountDateIso || "", "spoofAccountDateIso", true)
       ),
-      React.createElement(Text, {
-        style: { color: "#949ba4", fontSize: 11, marginBottom: 12, lineHeight: 15 }
-      }, "Ex. 2019-07-04 ou 04/07/2019. Recharge le profil après changement. Si ça ne bouge pas, Discord lit parfois seulement l’id — on patche quand même profil + utilitaires snowflake."),
 
-      React.createElement(Text, {
-        style: {
-          color: "#dbdee1",
-          fontSize: 14,
-          fontWeight: "600",
-          marginTop: 8,
-          marginBottom: 10
-        }
-      }, "Badges (tap to toggle)"),
-      React.createElement(Text, {
-        style: { color: "#949ba4", fontSize: 11, marginBottom: 8, lineHeight: 15 }
-      }, "Nitro / paliers : si tu as déjà un vrai badge Nitro, Larp le retire et affiche celui coché (un seul = le plus haut dans la liste). Idem pour Nitro Boost 12 / 24 mois si tu boostes déjà."),
+      section("Badges", primaryBadgesBlock),
 
-      BADGES.map(badgeRow),
-
-      React.createElement(Text, {
-        style: {
-          color: "#dbdee1",
-          fontSize: 14,
-          fontWeight: "600",
-          marginTop: 16,
-          marginBottom: 6
-        }
-      }, "Masquer des badges (profil local)"),
-      React.createElement(Text, {
-        style: { color: "#949ba4", fontSize: 11, marginBottom: 8, lineHeight: 15 }
-      }, "Retire des badges Discord réels sur ta vue (Quest / Orb / Nitro tenure / Boost serveur / feuille « Level Reached » par icône CDN). Solde Orb = patch JSX sur le profil. Ids partiels = sous-chaîne dans l’id du badge."),
-
-      hideToggle("quest", "Masquer badge Quest"),
-      hideToggle("orb", "Masquer badge Orb"),
-      hideToggle("nitro", "Masquer badge Nitro natif (tenure / premium)"),
-      hideToggle("boost", "Masquer badge Nitro Boost serveur natif"),
-      hideToggle("orbBalance", "Masquer solde Orb (ligne wallet profil)"),
-      hideToggle("levelLeaf", "Masquer feuille / niveau (Level Reached, April Fools)"),
-      hideToggle("legacyUsername", "Masquer « Originally known as »"),
-
-      React.createElement(View, { style: { marginBottom: 12 } },
-        React.createElement(Text, {
-          style: { color: "#dbdee1", fontSize: 14, fontWeight: "600", marginBottom: 6 }
-        }, "Masquer si l’id contient (séparés par espace ou virgule)"),
-        React.createElement(TextInput, {
-          style: {
-            backgroundColor: "#1e1f22",
-            color: "#ffffff",
-            borderRadius: 8,
-            paddingHorizontal: 12,
-            paddingVertical: 10,
-            fontSize: 15
+      section(
+        "Hide native (local)",
+        React.createElement(View, null, [
+          hideToggle("quest", "Quest", true),
+          hideToggle("orb", "Orb badge"),
+          hideToggle("nitro", "Nitro / tenure"),
+          hideToggle("boost", "Server boost"),
+          hideToggle("orbBalance", "Orb balance row"),
+          hideToggle("levelLeaf", "Level leaf / April Fools"),
+          hideToggle("legacyUsername", "Originally known as"),
+          React.createElement(View, {
+            style: { paddingHorizontal: 14, paddingVertical: 12, borderTopWidth: 1, borderTopColor: C.line }
           },
-          placeholder: "ex. april_fools orbs",
-          placeholderTextColor: "#80848e",
-          value: storage.hideNative.idSubstrings || "",
-          autoCorrect: false,
-          autoCapitalize: "none",
-          onChangeText: function (v) {
-            storage.hideNative.idSubstrings = v;
-            refresh();
-          }
-        })
+            React.createElement(Text, {
+              style: { color: C.muted, fontSize: 12, marginBottom: 6, fontWeight: "600" }
+            }, "Hide if badge id contains"),
+            React.createElement(TextInput, {
+              style: {
+                backgroundColor: C.inset,
+                color: C.text,
+                borderRadius: 10,
+                borderWidth: 1,
+                borderColor: C.line,
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+                fontSize: 15
+              },
+              placeholder: "space or comma separated",
+              placeholderTextColor: "#6d6f78",
+              value: storage.hideNative.idSubstrings || "",
+              autoCorrect: false,
+              autoCapitalize: "none",
+              onChangeText: function (v) {
+                storage.hideNative.idSubstrings = v;
+                refresh();
+              }
+            })
+          )
+        ])
       ),
 
       React.createElement(Pressable, {
         onPress: function () {
           storage.badges = {};
           refresh();
-          try { showToast("All badges cleared", getAssetIDByName("trash")); } catch (_) {}
+          try {
+            showToast("Cleared", getAssetIDByName("trash"));
+          } catch (_) {}
         },
         style: {
-          marginTop: 12,
-          padding: 12,
-          backgroundColor: "#da373c",
-          borderRadius: 8,
-          alignItems: "center"
+          marginTop: 4,
+          padding: 14,
+          borderRadius: 14,
+          alignItems: "center",
+          backgroundColor: "rgba(237,66,69,0.1)",
+          borderWidth: 1,
+          borderColor: "rgba(237,66,69,0.35)"
         }
-      },
-        React.createElement(Text, {
-          style: { color: "#ffffff", fontWeight: "600" }
-        }, "Clear all badges")
-      )
+      }, React.createElement(Text, { style: { color: C.danger, fontWeight: "800", fontSize: 15 } }, "Clear all spoof badges"))
     );
   }
 
   return {
     onLoad: function () {
       try {
-        showToast("[Larp] " + LARP_UI_TAG + " actif", getAssetIDByName("Check"));
+        warmLarpIconAssetCache();
+      } catch (_wm) {}
+      try {
+        showToast("[Larp] " + LARP_UI_TAG + " enabled", getAssetIDByName("Check"));
       } catch (_) {}
       patchUsername();
       patchSnowflakeConvertersForAccountDate();
@@ -1430,6 +1497,7 @@
       patchBadgeIconsViaJsx();
     },
     onUnload: function () {
+      clearLarpGetUserCache();
       for (var i = 0; i < unpatches.length; i++) {
         try { unpatches[i](); } catch (_) {}
       }
