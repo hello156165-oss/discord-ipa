@@ -1,0 +1,11 @@
+{
+  "$meta": {
+    "name": "hello156165 - private plugins",
+    "description": "Personal Kettu plugin repository."
+  },
+  "larp": {
+    "name": "Larp",
+    "description": "[v11.1.5] Larp: local profile spoof (badges list text-only in settings; reload-safe patches).",
+    "hash": "820d2b79c0b0817f"
+  }
+}
