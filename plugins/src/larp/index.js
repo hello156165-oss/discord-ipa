@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  var LARP_UI_TAG = "v11.1.0";
+  var LARP_UI_TAG = "v11.1.1";
 
   var React = vendetta.metro.common.React;
   var RN = vendetta.metro.common.ReactNative;
@@ -9,7 +9,7 @@
   var Text = RN.Text;
   var TextInput = RN.TextInput;
   var ScrollView = RN.ScrollView;
-  var Pressable = RN.Pressable || RN.TouchableOpacity;
+  var Image = RN.Image;
 
   var findByStoreName = vendetta.metro.findByStoreName;
   var findByName = vendetta.metro.findByName;
@@ -1115,16 +1115,38 @@
     var force = s[1];
 
     var C = {
-      bg: "#0d0e10",
-      card: "#1b1d21",
-      inset: "#111214",
-      line: "#2e3036",
-      muted: "#949ba4",
-      text: "#f2f3f5",
+      bg: "#313338",
+      card: "#2b2d31",
+      inset: "#1e1f22",
+      line: "#1e1f22",
+      muted: "#b5bac1",
+      text: "#dbdee1",
       accent: "#5865f2",
-      danger: "#ed4245",
-      ok: "#23a559"
+      danger: "#f23f43",
+      link: "#00a8fc"
     };
+
+    function badgeThumb(b) {
+      if (!b || !b.url) {
+        return React.createElement(View, { style: { width: 26, height: 26, marginRight: 10 } });
+      }
+      return React.createElement(View, {
+        style: {
+          width: 26,
+          height: 26,
+          marginRight: 10,
+          borderRadius: 4,
+          backgroundColor: "#111214",
+          overflow: "hidden",
+          alignItems: "center",
+          justifyContent: "center"
+        }
+      }, React.createElement(Image, {
+        source: { uri: b.url },
+        style: { width: 22, height: 22 },
+        resizeMode: "contain"
+      }));
+    }
 
     function refresh() {
       clearLarpGetUserCache();
@@ -1143,23 +1165,21 @@
     var replaceValue = storage.replaceUsername || "";
 
     function section(title, body) {
-      return React.createElement(View, { style: { marginBottom: 18 } },
+      return React.createElement(View, { style: { marginBottom: 16 } },
         React.createElement(Text, {
           style: {
             color: C.muted,
-            fontSize: 11,
-            fontWeight: "700",
-            letterSpacing: 0.7,
-            marginBottom: 8,
-            textTransform: "uppercase"
+            fontSize: 12,
+            fontWeight: "600",
+            marginBottom: 6
           }
         }, title),
         React.createElement(View, {
           style: {
             backgroundColor: C.card,
-            borderRadius: 14,
+            borderRadius: 8,
             borderWidth: 1,
-            borderColor: C.line,
+            borderColor: "#202225",
             overflow: "hidden"
           }
         }, body)
@@ -1169,7 +1189,7 @@
     function field(label, value, key, isFirst) {
       return React.createElement(View, {
         style: {
-          paddingHorizontal: 14,
+          paddingHorizontal: 12,
           paddingVertical: 12,
           borderTopWidth: isFirst ? 0 : 1,
           borderTopColor: C.line
@@ -1182,12 +1202,12 @@
           style: {
             backgroundColor: C.inset,
             color: C.text,
-            borderRadius: 10,
+            borderRadius: 6,
             borderWidth: 1,
-            borderColor: C.line,
-            paddingHorizontal: 12,
-            paddingVertical: 11,
-            fontSize: 16
+            borderColor: "#111214",
+            paddingHorizontal: 10,
+            paddingVertical: 9,
+            fontSize: 15
           },
           placeholder: label,
           placeholderTextColor: "#6d6f78",
@@ -1216,23 +1236,18 @@
         style: {
           flexDirection: "row",
           alignItems: "center",
-          paddingHorizontal: 14,
-          paddingVertical: 11,
+          paddingHorizontal: 12,
+          paddingVertical: 9,
           borderTopWidth: 1,
           borderTopColor: C.line,
-          backgroundColor: on ? "#252a44" : "transparent"
+          backgroundColor: on ? "#383a40" : "transparent"
         }
       },
-        React.createElement(View, {
-          style: {
-            width: 8,
-            height: 8,
-            borderRadius: 4,
-            marginRight: 12,
-            backgroundColor: on ? C.accent : "#4e5058"
-          }
-        }),
-        React.createElement(Text, { style: { color: C.text, fontSize: 15, flex: 1 } }, b.label)
+        badgeThumb(b),
+        React.createElement(Text, { style: { color: C.text, fontSize: 15, flex: 1 } }, b.label),
+        React.createElement(Text, {
+          style: { color: on ? C.accent : C.muted, fontSize: 13, marginLeft: 6 }
+        }, on ? "✓" : "")
       );
     }
 
@@ -1247,23 +1262,23 @@
         style: {
           flexDirection: "row",
           alignItems: "center",
-          paddingHorizontal: 14,
-          paddingVertical: 12,
+          paddingHorizontal: 12,
+          paddingVertical: 11,
           borderTopWidth: noTop ? 0 : 1,
           borderTopColor: C.line
         }
       },
-        React.createElement(Text, { style: { color: C.text, fontSize: 15, flex: 1, paddingRight: 10 } }, label),
         React.createElement(Text, {
-          style: { fontSize: 13, fontWeight: "800", color: on ? C.accent : C.muted }
-        }, on ? "ON" : "OFF")
+          style: { color: on ? C.accent : C.muted, fontSize: 14, width: 20, marginRight: 6 }
+        }, on ? "☑" : "☐"),
+        React.createElement(Text, { style: { color: C.text, fontSize: 15, flex: 1 } }, label)
       );
     }
 
     var primaryBadgesBlock = React.createElement(View, null,
       React.createElement(View, {
-        style: { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 4, borderBottomWidth: 1, borderBottomColor: C.line }
-      }, React.createElement(Text, { style: { color: C.muted, fontSize: 12, fontWeight: "600" } }, "Primary account")),
+        style: { paddingHorizontal: 12, paddingTop: 10, paddingBottom: 6, borderBottomWidth: 1, borderBottomColor: C.line }
+      }, React.createElement(Text, { style: { color: C.muted, fontSize: 12 } }, "Primary account")),
       BADGES.map(badgeRow)
     );
 
@@ -1277,7 +1292,7 @@
         function otherField(label, val, opKey, firstRow) {
           return React.createElement(View, {
             style: {
-              paddingHorizontal: 14,
+              paddingHorizontal: 12,
               paddingVertical: 10,
               borderTopWidth: firstRow ? 0 : 1,
               borderTopColor: C.line
@@ -1290,11 +1305,11 @@
               style: {
                 backgroundColor: C.inset,
                 color: C.text,
-                borderRadius: 10,
+                borderRadius: 6,
                 borderWidth: 1,
-                borderColor: C.line,
-                paddingHorizontal: 11,
-                paddingVertical: 9,
+                borderColor: "#111214",
+                paddingHorizontal: 10,
+                paddingVertical: 8,
                 fontSize: 15
               },
               placeholder: label,
@@ -1321,17 +1336,18 @@
             style: {
               flexDirection: "row",
               alignItems: "center",
-              paddingHorizontal: 14,
-              paddingVertical: 10,
+              paddingHorizontal: 12,
+              paddingVertical: 9,
               borderTopWidth: 1,
               borderTopColor: C.line,
-              backgroundColor: on ? "#252a44" : "transparent"
+              backgroundColor: on ? "#383a40" : "transparent"
             }
           },
-            React.createElement(View, {
-              style: { width: 7, height: 7, borderRadius: 3, marginRight: 10, backgroundColor: on ? C.accent : "#4e5058" }
-            }),
-            React.createElement(Text, { style: { color: C.text, fontSize: 14, flex: 1 } }, b.label)
+            badgeThumb(b),
+            React.createElement(Text, { style: { color: C.text, fontSize: 14, flex: 1 } }, b.label),
+            React.createElement(Text, {
+              style: { color: on ? C.accent : C.muted, fontSize: 13, marginLeft: 6 }
+            }, on ? "✓" : "")
           );
         }
 
@@ -1344,13 +1360,13 @@
           }
         },
           React.createElement(Text, {
-            style: { color: C.text, fontWeight: "800", fontSize: 15, paddingHorizontal: 14, paddingTop: 12, paddingBottom: 6 }
+            style: { color: C.text, fontWeight: "600", fontSize: 14, paddingHorizontal: 12, paddingTop: 10, paddingBottom: 5 }
           }, "Account " + (oi + 1)),
           otherField("User ID (optional)", op.userId || "", "userId", true),
           otherField("Match username", op.matchUsername || "", "matchUsername"),
           otherField("Replace @handle", op.replaceUsername || "", "replaceUsername"),
           React.createElement(Text, {
-            style: { color: C.muted, fontSize: 11, paddingHorizontal: 14, marginTop: 4, marginBottom: 2 }
+            style: { color: C.muted, fontSize: 11, paddingHorizontal: 12, marginTop: 4, marginBottom: 2 }
           }, "Badges"),
           BADGES.map(otherBadgeRow),
           React.createElement(Pressable, {
@@ -1359,17 +1375,13 @@
               refresh();
             },
             style: {
-              marginHorizontal: 12,
-              marginTop: 8,
-              marginBottom: 8,
-              padding: 11,
-              borderRadius: 10,
-              alignItems: "center",
-              backgroundColor: "rgba(237,66,69,0.12)",
-              borderWidth: 1,
-              borderColor: "rgba(237,66,69,0.35)"
+              marginHorizontal: 10,
+              marginTop: 6,
+              marginBottom: 6,
+              paddingVertical: 9,
+              alignItems: "center"
             }
-          }, React.createElement(Text, { style: { color: C.danger, fontWeight: "800" } }, "Remove"))
+          }, React.createElement(Text, { style: { color: C.danger, fontWeight: "600", fontSize: 14 } }, "Remove"))
         );
       }),
       React.createElement(Pressable, {
@@ -1385,22 +1397,21 @@
         style: {
           borderTopWidth: oth.length ? 1 : 0,
           borderTopColor: C.line,
-          padding: 14,
-          alignItems: "center",
-          backgroundColor: "#1a2520"
+          paddingVertical: 12,
+          alignItems: "center"
         }
-      }, React.createElement(Text, { style: { color: C.ok, fontWeight: "800", fontSize: 15 } }, "Add account"))
+      }, React.createElement(Text, { style: { color: C.link, fontWeight: "600", fontSize: 15 } }, "Add account"))
     );
 
     return React.createElement(ScrollView, {
       style: { flex: 1, backgroundColor: C.bg },
-      contentContainerStyle: { padding: 18, paddingBottom: 72 }
+      contentContainerStyle: { padding: 16, paddingBottom: 64 }
     },
       React.createElement(Text, {
-        style: { color: C.text, fontSize: 26, fontWeight: "800", letterSpacing: -0.4 }
+        style: { color: C.text, fontSize: 20, fontWeight: "700" }
       }, "Larp"),
       React.createElement(Text, {
-        style: { color: C.muted, fontSize: 14, marginTop: 4, marginBottom: 22 }
+        style: { color: C.muted, fontSize: 13, marginTop: 2, marginBottom: 16 }
       }, "Client-side only."),
 
       section(
@@ -1431,7 +1442,7 @@
           hideToggle("levelLeaf", "Level leaf / April Fools"),
           hideToggle("legacyUsername", "Originally known as"),
           React.createElement(View, {
-            style: { paddingHorizontal: 14, paddingVertical: 12, borderTopWidth: 1, borderTopColor: C.line }
+            style: { paddingHorizontal: 12, paddingVertical: 11, borderTopWidth: 1, borderTopColor: C.line }
           },
             React.createElement(Text, {
               style: { color: C.muted, fontSize: 12, marginBottom: 6, fontWeight: "600" }
@@ -1440,11 +1451,11 @@
               style: {
                 backgroundColor: C.inset,
                 color: C.text,
-                borderRadius: 10,
+                borderRadius: 6,
                 borderWidth: 1,
-                borderColor: C.line,
-                paddingHorizontal: 12,
-                paddingVertical: 10,
+                borderColor: "#111214",
+                paddingHorizontal: 10,
+                paddingVertical: 9,
                 fontSize: 15
               },
               placeholder: "space or comma separated",
@@ -1470,15 +1481,11 @@
           } catch (_) {}
         },
         style: {
-          marginTop: 4,
-          padding: 14,
-          borderRadius: 14,
-          alignItems: "center",
-          backgroundColor: "rgba(237,66,69,0.1)",
-          borderWidth: 1,
-          borderColor: "rgba(237,66,69,0.35)"
+          marginTop: 8,
+          paddingVertical: 12,
+          alignItems: "center"
         }
-      }, React.createElement(Text, { style: { color: C.danger, fontWeight: "800", fontSize: 15 } }, "Clear all spoof badges"))
+      }, React.createElement(Text, { style: { color: C.danger, fontWeight: "600", fontSize: 14 } }, "Clear all spoof badges"))
     );
   }
 

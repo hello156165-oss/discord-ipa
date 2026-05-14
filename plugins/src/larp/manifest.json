@@ -1,7 +1,7 @@
 {
   "name": "Larp",
-  "description": "[v11.1.0] Local profile spoof: badges, @handle, multi-account, hide native badges.",
-  "authors": [{ "name": "hello156165 (v11.1.0)" }],
+  "description": "[v11.1.1] Local profile spoof — badges with CDN previews, Discord-toned settings.",
+  "authors": [{ "name": "hello156165 (v11.1.1)" }],
   "main": "index.js",
   "hash": "REPLACED_AT_BUILD_TIME",
   "vendetta": {
