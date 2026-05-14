@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  var LARP_UI_TAG = "v10.7";
+  var LARP_UI_TAG = "v11.0";
 
   var React = vendetta.metro.common.React;
   var RN = vendetta.metro.common.ReactNative;
@@ -30,9 +30,13 @@
   }
   if (storage.hideNative.quest == null) storage.hideNative.quest = false;
   if (storage.hideNative.orb == null) storage.hideNative.orb = false;
+  if (storage.hideNative.nitro == null) storage.hideNative.nitro = false;
+  if (storage.hideNative.boost == null) storage.hideNative.boost = false;
+  if (storage.hideNative.orbBalance == null) storage.hideNative.orbBalance = false;
   if (storage.hideNative.legacyUsername == null) storage.hideNative.legacyUsername = false;
   if (storage.hideNative.levelLeaf == null) storage.hideNative.levelLeaf = false;
   if (storage.hideNative.idSubstrings == null) storage.hideNative.idSubstrings = "";
+  if (!Array.isArray(storage.otherProfiles)) storage.otherProfiles = [];
   var CDN = "https://cdn.discordapp.com/badge-icons";
   var ICON_EMERALD = "11e2d339068b55d3a506cff34d3780f3";
   var ICON_RUBY = "cd5e2cfd9d7f27a8cdcd3e8a8d5dc9f4";
@@ -186,8 +190,8 @@
     return null;
   }
 
-  function getEnabledNitroLarpId() {
-    var bm = getBadgesMap();
+  function getEnabledNitroLarpIdFromMap(bm) {
+    if (!bm || typeof bm !== "object") return null;
     for (var _ti = 0; _ti < NITRO_LARP_ORDER.length; _ti++) {
       var tid = NITRO_LARP_ORDER[_ti];
       if (bm[tid]) return tid;
@@ -195,13 +199,21 @@
     return null;
   }
 
-  function getEnabledBoostLarpId() {
-    var bm = getBadgesMap();
+  function getEnabledBoostLarpIdFromMap(bm) {
+    if (!bm || typeof bm !== "object") return null;
     for (var _bj = 0; _bj < BOOST_LARP_ORDER.length; _bj++) {
       var bid = BOOST_LARP_ORDER[_bj];
       if (bm[bid]) return bid;
     }
     return null;
+  }
+
+  function getEnabledNitroLarpId() {
+    return getEnabledNitroLarpIdFromMap(getBadgesMap());
+  }
+
+  function getEnabledBoostLarpId() {
+    return getEnabledBoostLarpIdFromMap(getBadgesMap());
   }
 
   function nativeBoostCount(arr) {
@@ -279,6 +291,8 @@
         return true;
       }
     }
+    if (h.nitro && isNativeNitroLike(b)) return true;
+    if (h.boost && isGuildBoostBadge(b)) return true;
     if (h.levelLeaf) {
       if (hay.indexOf(LEVEL_LEAF_ICON_HASH) !== -1) return true;
       if (id.indexOf("april_fool") !== -1 || id.indexOf("aprilfool") !== -1) return true;
@@ -446,6 +460,14 @@
     return t.toLowerCase();
   }
 
+  function usernameMatchesSpoofPair(pun, matchUsername, replaceUsername) {
+    if (!pun) return false;
+    var m = normName(matchUsername || "");
+    var r = normName((replaceUsername || "").trim());
+    if (!m || !r) return false;
+    return pun === m || pun === r;
+  }
+
   function parseAccountDateIsoMs(s) {
     if (s == null || typeof s !== "string") return null;
     var t = s.trim();
@@ -471,20 +493,74 @@
     return b;
   }
 
+  function hasAnyBadgesInMap(bm) {
+    if (!bm || typeof bm !== "object") return false;
+    for (var hk in bm) {
+      if (bm[hk]) return true;
+    }
+    return false;
+  }
+
+  function findSpoofEntryForBadges(uid, profileUser) {
+    var pun = profileUser && normName(profileUser.username || "");
+    var cur = UserStoreRef && UserStoreRef.getCurrentUser && UserStoreRef.getCurrentUser();
+    var curId = cur && cur.id;
+    var others = storage.otherProfiles;
+    if (!Array.isArray(others)) others = [];
+    var oi;
+    for (oi = 0; oi < others.length; oi++) {
+      var op = others[oi] || {};
+      if (op.userId && uid != null && String(op.userId) === String(uid)) {
+        return { badgesMap: op.badges && typeof op.badges === "object" ? op.badges : {} };
+      }
+    }
+    for (oi = 0; oi < others.length; oi++) {
+      var op2 = others[oi] || {};
+      if (pun && usernameMatchesSpoofPair(pun, op2.matchUsername, op2.replaceUsername)) {
+        return { badgesMap: op2.badges && typeof op2.badges === "object" ? op2.badges : {} };
+      }
+    }
+    if (
+      uid != null &&
+      curId != null &&
+      String(uid) === String(curId) &&
+      (!pun ||
+        usernameMatchesSpoofPair(pun, storage.matchUsername, storage.replaceUsername)) &&
+      normName(storage.matchUsername || "") &&
+      (storage.replaceUsername || "").trim()
+    ) {
+      return { badgesMap: storage.badges && typeof storage.badges === "object" ? storage.badges : {} };
+    }
+    return null;
+  }
+
   var wrapProxyByUser = new WeakMap();
 
+  function getUsernameSpoofReplace(user) {
+    if (!user) return null;
+    var pun = normName(user.username || "");
+    if (!pun) return null;
+    if (normName(storage.matchUsername || "") === pun && (storage.replaceUsername || "").trim()) {
+      return (storage.replaceUsername || "").trim();
+    }
+    var others = storage.otherProfiles;
+    if (!Array.isArray(others)) return null;
+    for (var gi = 0; gi < others.length; gi++) {
+      var op = others[gi] || {};
+      if (normName(op.matchUsername || "") === pun && (op.replaceUsername || "").trim()) {
+        return (op.replaceUsername || "").trim();
+      }
+    }
+    return null;
+  }
+
   function shouldSpoofUser(user) {
-    if (!user) return false;
-    var match = normName(storage.matchUsername || "");
-    var replace = (storage.replaceUsername || "").trim();
-    if (!match || !replace) return false;
-    var un = normName(user.username || "");
-    return un === match;
+    return getUsernameSpoofReplace(user) != null;
   }
 
   function shouldWrapUserForProxy(user) {
     if (!user) return false;
-    if (shouldSpoofUser(user)) return true;
+    if (getUsernameSpoofReplace(user)) return true;
     if (parseAccountDateIsoMs(storage.spoofAccountDateIso) == null) return false;
     var cur =
       UserStoreRef &&
@@ -517,8 +593,8 @@
           if (p === "createdAt" || p === "created_at") return new Date(spoofCreatedMs);
         }
 
-        if (!shouldSpoofUser(t)) return Reflect.get(t, p, recv);
-        var replace = (storage.replaceUsername || "").trim();
+        if (!getUsernameSpoofReplace(t)) return Reflect.get(t, p, recv);
+        var replace = getUsernameSpoofReplace(t);
 
         if (p === "username") return replace;
 
@@ -557,8 +633,8 @@
           }
         }
 
-        if (!shouldSpoofUser(t)) return Reflect.getOwnPropertyDescriptor(t, p);
-        var replace = (storage.replaceUsername || "").trim();
+        if (!getUsernameSpoofReplace(t)) return Reflect.getOwnPropertyDescriptor(t, p);
+        var replace = getUsernameSpoofReplace(t);
         if (p === "username") {
           return {
             configurable: true,
@@ -752,38 +828,33 @@
 
       function badgeHandler(args, ret) {
         if (!ret || !Array.isArray(ret)) return ret;
-        var badgesMap = getBadgesMap();
-        var hasAny = false;
-        for (var k in badgesMap) {
-          if (badgesMap[k]) {
-            hasAny = true;
-            break;
-          }
-        }
-        if (!hasAny) {
-          var onlyReal = ret.filter(function (x) {
-            return !x || !x.id || String(x.id).indexOf("larp-") !== 0;
-          });
-          return onlyReal.length === ret.length ? ret : onlyReal;
+        var stripLarpOnly = ret.filter(function (x) {
+          return !x || !x.id || String(x.id).indexOf("larp-") !== 0;
+        });
+        function maybeStripLarp() {
+          return stripLarpOnly.length === ret.length ? ret : stripLarpOnly;
         }
 
         var u = args && args[0];
         var uid =
           (u && (u.userId || u.id)) ||
           (u && u.user && (u.user.id || u.user.userId));
-        var cur =
-          UserStoreRef &&
-          UserStoreRef.getCurrentUser &&
-          UserStoreRef.getCurrentUser();
-        var curId = cur && cur.id;
-        if (!uid || !curId || String(uid) !== String(curId)) return ret;
+        var profileUser =
+          u && u.user && typeof u.user === "object" && (u.user.username != null || u.user.id != null)
+            ? u.user
+            : u;
+        var spoofCtx = findSpoofEntryForBadges(uid, profileUser);
+        if (!spoofCtx) return maybeStripLarp();
+
+        var badgesMap = spoofCtx.badgesMap || {};
+        if (!hasAnyBadgesInMap(badgesMap)) return maybeStripLarp();
 
         var base = ret.filter(function (x) {
           return !x || !x.id || String(x.id).indexOf("larp-") !== 0;
         });
 
-        var nitroPick = getEnabledNitroLarpId();
-        var boostPick = getEnabledBoostLarpId();
+        var nitroPick = getEnabledNitroLarpIdFromMap(badgesMap);
+        var boostPick = getEnabledBoostLarpIdFromMap(badgesMap);
 
         var hasRealNitro = nativeNitroCount(base) > 0;
         var hasRealBoost = nativeBoostCount(base) > 0;
@@ -858,6 +929,24 @@
         var Type = args[0];
         if (typeof Type !== "function") return ret;
         var n = Type.displayName || Type.name;
+        if (storage.hideNative && storage.hideNative.orbBalance && n && typeof n === "string") {
+          if (/orb/i.test(n) && /balance|wallet|currency|amount|credits|ledger|inventory|wallet/i.test(n)) {
+            var hideOrbBal = {
+              opacity: 0,
+              height: 0,
+              maxHeight: 0,
+              overflow: "hidden",
+              margin: 0,
+              padding: 0,
+              borderWidth: 0
+            };
+            var st = ret.props.style;
+            if (Array.isArray(st)) ret.props.style = st.concat([hideOrbBal]);
+            else if (st && typeof st === "object") ret.props.style = [st, hideOrbBal];
+            else ret.props.style = hideOrbBal;
+            return ret;
+          }
+        }
         if (n !== "ProfileBadge" && n !== "RenderedBadge") return ret;
         var id = ret.props.id;
         if (typeof id !== "string") return ret;
@@ -1017,6 +1106,140 @@
       field("User to replace (username)", matchValue, "matchUsername"),
       field("Replacement @handle", replaceValue, "replaceUsername"),
 
+      React.createElement(Text, {
+        style: {
+          color: "#dbdee1",
+          fontSize: 14,
+          fontWeight: "600",
+          marginTop: 4,
+          marginBottom: 6
+        }
+      }, "Autres comptes"),
+      React.createElement(Text, {
+        style: { color: "#949ba4", fontSize: 11, marginBottom: 10, lineHeight: 15 }
+      }, "Optionnel : id Discord = priorité. Sinon même règle @ que le compte principal. Badges séparés par ligne."),
+
+      (storage.otherProfiles || []).map(function (_op, oi) {
+        var op = storage.otherProfiles[oi];
+        if (!op || typeof op !== "object") return null;
+        if (typeof op.badges !== "object" || op.badges === null) op.badges = {};
+
+        function otherField(label, val, key) {
+          return React.createElement(View, { style: { marginBottom: 8 } },
+            React.createElement(Text, {
+              style: { color: "#b5bac1", fontSize: 12, marginBottom: 4 }
+            }, label),
+            React.createElement(TextInput, {
+              style: {
+                backgroundColor: "#1e1f22",
+                color: "#ffffff",
+                borderRadius: 8,
+                paddingHorizontal: 10,
+                paddingVertical: 8,
+                fontSize: 15
+              },
+              placeholder: label,
+              placeholderTextColor: "#80848e",
+              value: val == null ? "" : String(val),
+              autoCorrect: false,
+              autoCapitalize: "none",
+              onChangeText: function (v) {
+                op[key] = v;
+                refresh();
+              }
+            })
+          );
+        }
+
+        function otherBadgeRow(b) {
+          var on = !!op.badges[b.id];
+          return React.createElement(Pressable, {
+            key: "o" + oi + "-" + b.id,
+            onPress: function () {
+              op.badges[b.id] = !on;
+              refresh();
+            },
+            style: {
+              flexDirection: "row",
+              alignItems: "center",
+              paddingHorizontal: 10,
+              paddingVertical: 8,
+              backgroundColor: on ? "#3c4080" : "#232428",
+              borderRadius: 6,
+              marginBottom: 4
+            }
+          },
+            React.createElement(Text, {
+              style: { color: on ? "#949cf7" : "#80848e", fontSize: 16, marginRight: 8 }
+            }, on ? "☑" : "☐"),
+            React.createElement(Text, {
+              style: { color: "#dbdee1", fontSize: 13, flex: 1 }
+            }, b.label)
+          );
+        }
+
+        return React.createElement(View, {
+          key: "otherprof-" + oi,
+          style: {
+            backgroundColor: "#2b2d31",
+            borderRadius: 10,
+            padding: 12,
+            marginBottom: 12,
+            borderWidth: 1,
+            borderColor: "#1f2023"
+          }
+        },
+          React.createElement(Text, {
+            style: { color: "#ffffff", fontWeight: "700", marginBottom: 8, fontSize: 15 }
+          }, "Compte #" + (oi + 1)),
+          otherField("User id (optionnel)", op.userId || "", "userId"),
+          otherField("Username à matcher", op.matchUsername || "", "matchUsername"),
+          otherField("Remplacement @", op.replaceUsername || "", "replaceUsername"),
+          React.createElement(Text, {
+            style: { color: "#b5bac1", fontSize: 12, marginTop: 4, marginBottom: 6 }
+          }, "Badges (ce compte)"),
+          BADGES.map(otherBadgeRow),
+          React.createElement(Pressable, {
+            onPress: function () {
+              storage.otherProfiles.splice(oi, 1);
+              refresh();
+            },
+            style: {
+              marginTop: 10,
+              padding: 10,
+              backgroundColor: "#da373c",
+              borderRadius: 8,
+              alignItems: "center"
+            }
+          },
+            React.createElement(Text, { style: { color: "#fff", fontWeight: "600" } }, "Supprimer cette ligne")
+          )
+        );
+      }),
+
+      React.createElement(Pressable, {
+        onPress: function () {
+          storage.otherProfiles.push({
+            userId: "",
+            matchUsername: "",
+            replaceUsername: "",
+            badges: {}
+          });
+          refresh();
+        },
+        style: {
+          marginBottom: 16,
+          padding: 12,
+          backgroundColor: "#248046",
+          borderRadius: 8,
+          alignItems: "center"
+        }
+      },
+        React.createElement(Text, {
+          style: { color: "#ffffff", fontWeight: "600" }
+        }, "Ajouter un compte")
+      ),
+
       field(
         "Date du compte (ISO ou JJ/MM/AAAA)",
         storage.spoofAccountDateIso || "",
@@ -1052,10 +1275,13 @@
       }, "Masquer des badges (profil local)"),
       React.createElement(Text, {
         style: { color: "#949ba4", fontSize: 11, marginBottom: 8, lineHeight: 15 }
-      }, "Retire des badges Discord réels sur ta vue (Quest / Orb / feuille « Level Reached » par icône CDN). Ids partiels = sous-chaîne dans l’id du badge."),
+      }, "Retire des badges Discord réels sur ta vue (Quest / Orb / Nitro tenure / Boost serveur / feuille « Level Reached » par icône CDN). Solde Orb = patch JSX sur le profil. Ids partiels = sous-chaîne dans l’id du badge."),
 
       hideToggle("quest", "Masquer badge Quest"),
       hideToggle("orb", "Masquer badge Orb"),
+      hideToggle("nitro", "Masquer badge Nitro natif (tenure / premium)"),
+      hideToggle("boost", "Masquer badge Nitro Boost serveur natif"),
+      hideToggle("orbBalance", "Masquer solde Orb (ligne wallet profil)"),
       hideToggle("levelLeaf", "Masquer feuille / niveau (Level Reached, April Fools)"),
       hideToggle("legacyUsername", "Masquer « Originally known as »"),
 

@@ -1,7 +1,7 @@
 {
   "name": "Larp",
-  "description": "[v10.7] Tap Nitro/Boost Larp → alerte locale + lien web (sans Manage Nitro).",
-  "authors": [{ "name": "hello156165 (v10.7)" }],
+  "description": "[v11.0] Badges + @ spoof multi-comptes, masquer Nitro/Boost natifs, solde Orb.",
+  "authors": [{ "name": "hello156165 (v11.0)" }],
   "main": "index.js",
   "hash": "REPLACED_AT_BUILD_TIME",
   "vendetta": {
