@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  var LARP_UI_TAG = "v11.1.3";
+  var LARP_UI_TAG = "v11.1.4";
 
   var React = vendetta.metro.common.React;
   var RN = vendetta.metro.common.ReactNative;
@@ -732,6 +732,18 @@
     return buildUserProxy(user);
   }
 
+  function larpUnpatchAll() {
+    for (var ui = 0; ui < unpatches.length; ui++) {
+      try {
+        unpatches[ui]();
+      } catch (_up) {}
+    }
+    unpatches = [];
+    __larpProfileStorePatched = {};
+    clearLarpGetUserCache();
+    wrapProxyByUser = new WeakMap();
+  }
+
   function patchUsername() {
     try {
       var UserStore = findByStoreName("UserStore");
@@ -1168,6 +1180,14 @@
         if (us && typeof us.emitChange === "function") {
           us.emitChange();
         }
+        var profStores = ["UserProfileStore", "UserProfileStoreV2", "GuildMemberProfileStore"];
+        var pi;
+        for (pi = 0; pi < profStores.length; pi++) {
+          var Ps = findByStoreName(profStores[pi]);
+          if (Ps && typeof Ps.emitChange === "function") {
+            Ps.emitChange();
+          }
+        }
       } catch (_) {}
     }
 
@@ -1501,6 +1521,7 @@
 
   return {
     onLoad: function () {
+      larpUnpatchAll();
       try {
         warmLarpIconAssetCache();
       } catch (_wm) {}
@@ -1514,11 +1535,7 @@
       patchBadgeIconsViaJsx();
     },
     onUnload: function () {
-      clearLarpGetUserCache();
-      for (var i = 0; i < unpatches.length; i++) {
-        try { unpatches[i](); } catch (_) {}
-      }
-      unpatches = [];
+      larpUnpatchAll();
     },
     settings: Settings
   };

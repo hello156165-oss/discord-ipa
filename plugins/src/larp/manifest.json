@@ -1,7 +1,7 @@
 {
   "name": "Larp",
-  "description": "[v11.1.3] Larp: fix settings crash (badge thumbnails use CDN uri only).",
-  "authors": [{ "name": "hello156165 (v11.1.3)" }],
+  "description": "[v11.1.4] Larp: safe plugin reload (unpatch before repatch), profile stores emit on settings refresh.",
+  "authors": [{ "name": "hello156165 (v11.1.4)" }],
   "main": "index.js",
   "hash": "REPLACED_AT_BUILD_TIME",
   "vendetta": {
