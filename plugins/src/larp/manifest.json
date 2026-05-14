@@ -1,7 +1,7 @@
 {
   "name": "Larp",
-  "description": "[v11.1.2] Larp: settings badge previews (native assets + CDN fallback).",
-  "authors": [{ "name": "hello156165 (v11.1.2)" }],
+  "description": "[v11.1.3] Larp: fix settings crash (badge thumbnails use CDN uri only).",
+  "authors": [{ "name": "hello156165 (v11.1.3)" }],
   "main": "index.js",
   "hash": "REPLACED_AT_BUILD_TIME",
   "vendetta": {

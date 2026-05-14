@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  var LARP_UI_TAG = "v11.1.2";
+  var LARP_UI_TAG = "v11.1.3";
 
   var React = vendetta.metro.common.React;
   var RN = vendetta.metro.common.ReactNative;
@@ -10,6 +10,9 @@
   var TextInput = RN.TextInput;
   var ScrollView = RN.ScrollView;
   var Image = RN.Image;
+  if (typeof Image !== "function") {
+    Image = null;
+  }
 
   var findByStoreName = vendetta.metro.findByStoreName;
   var findByName = vendetta.metro.findByName;
@@ -1127,6 +1130,8 @@
     };
 
     function badgeThumb(b) {
+      var spacer = React.createElement(View, { style: { width: 26, height: 26, marginRight: 10 } });
+      if (!b || !Image) return spacer;
       var wrap = {
         width: 26,
         height: 26,
@@ -1137,37 +1142,20 @@
         alignItems: "center",
         justifyContent: "center"
       };
-      if (!b) {
-        return React.createElement(View, { style: { width: 26, height: 26, marginRight: 10 } });
-      }
-      var aid = firstResolvedAsset(collectAssetNames(b));
-      var imgEl = null;
-      if (aid != null) {
-        var n =
-          typeof aid === "number"
-            ? aid
-            : typeof aid === "string"
-              ? parseInt(aid, 10)
-              : NaN;
-        if (!isNaN(n) && isFinite(n)) {
-          imgEl = React.createElement(Image, {
-            source: n,
+      if (!b.url) return spacer;
+      try {
+        return React.createElement(
+          View,
+          { style: wrap },
+          React.createElement(Image, {
+            source: { uri: String(b.url) },
             style: { width: 22, height: 22 },
             resizeMode: "contain"
-          });
-        }
+          })
+        );
+      } catch (_bt) {
+        return spacer;
       }
-      if (!imgEl && b.url) {
-        imgEl = React.createElement(Image, {
-          source: { uri: String(b.url) },
-          style: { width: 22, height: 22 },
-          resizeMode: "contain"
-        });
-      }
-      if (!imgEl) {
-        return React.createElement(View, { style: { width: 26, height: 26, marginRight: 10 } });
-      }
-      return React.createElement(View, { style: wrap }, imgEl);
     }
 
     function refresh() {
