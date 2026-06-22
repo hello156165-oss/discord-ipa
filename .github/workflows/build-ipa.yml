@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       ipa_url:
-        description: "URL directe d'un IPA Discord DÉCHIFFRÉ (decrypted)"
+        description: "https://decrypt.day/fs/dl/s/hIFaayG7v9LfqP0H2oUod/com.hammerandchisel.discord_333.1_und3fined.ipa?X-Amz-Expires=1800&X-Amz-Date=20260622T131506Z&X-Amz-Security-Token=a0fb850f1f9921ab-SEA.Fh4hQfB6DfBcJt_s5skkz.985746746&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=5984fa5d025ac1fb47a47653444599a2%2F20260622%2Fauto%2F%2Faws4_request&X-Amz-SignedHeaders=host&X-Amz-Signature=9298294d13b409f908f512c065abf413bc4a48f7cef2cbb6f3bf0bddd56b9619"
         required: true
         type: string
       release:
